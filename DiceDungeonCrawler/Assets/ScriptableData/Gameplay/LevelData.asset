@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e9ee68da68442e094c41f5fa871b8bf, type: 3}
+  m_Name: LevelData
+  m_EditorClassIdentifier: 
+  m_levelInfos:
+  - levelBasePoints: 150
+  - levelBasePoints: 180
+  - levelBasePoints: 230
+  - levelBasePoints: 290
+  - levelBasePoints: 370
+  - levelBasePoints: 460
+  - levelBasePoints: 580
+  - levelBasePoints: 720
+  - levelBasePoints: 900
+  - levelBasePoints: 1100
+  - levelBasePoints: 1400
+  - levelBasePoints: 1750
+  - levelBasePoints: 2200
+  - levelBasePoints: 2700
+  - levelBasePoints: 3400
+  - levelBasePoints: 4200
+  - levelBasePoints: 5300
+  - levelBasePoints: 6600
+  - levelBasePoints: 8300
+  - levelBasePoints: 10400
+  - levelBasePoints: 13000
+  - levelBasePoints: 16000
+  - levelBasePoints: 20000
+  - levelBasePoints: 25000
+  normalFoeMod: 1
+  mediumFoeMod: 1.5
+  hardFoeMod: 2
