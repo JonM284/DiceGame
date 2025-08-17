@@ -51,6 +51,7 @@ namespace Runtime.Gameplay
         [SerializeField] private float m_dragBaseYPosition, m_xPosThreshold;
         [SerializeField] private List<GameObject> m_diceSelectors = new List<GameObject>();
         [SerializeField] private LayerMask selectableLayers;
+        [SerializeField] private Transform m_diceBagLoc;
 
         [SerializeField] private float m_calculationSpeed;
         
@@ -63,7 +64,7 @@ namespace Runtime.Gameplay
         
         private int m_selectedDiceCount, m_currentRollsAmount;
 
-        private bool m_isAddingToSelection;
+        private bool m_isAddingToSelection, m_isInitialTryRoll;
 
         private float m_timeBetweenSpins = 0.5f, m_timeSinceLastSpin;
         private float m_calculatedOutcome;
@@ -89,12 +90,16 @@ namespace Runtime.Gameplay
         private float m_mouseInputThreshold = 0.25f;
         private SelectedDiceLocations m_currentSpace;
 
+        private int m_maxAmountOfTries = 3;
+
         #endregion
 
         #region Accessors
 
         public BaseDie currentDraggingDie { get; private set; }
-        
+
+        public int amountOfTries { get; private set; }
+
         #endregion
 
         #region Unity Events
@@ -149,30 +154,57 @@ namespace Runtime.Gameplay
 
         #region Class Implementation
 
-        public void InitializeDice()
+        private void CreateDice()
         {
-
             var _initialRosterDice = DiceGameController.Instance.GetRosterDiceData();
 
             for(int i = 0; i < _initialRosterDice.Count; i++)
             {
                 var _dieData = DiceGameController.Instance.GetDieByGUID(_initialRosterDice[i].guid);
-                var _newBaseDie = Instantiate(_dieData.diePrefab, m_rollableDiceSpaces[i].position, Quaternion.identity);
+                var _newBaseDie = Instantiate(_dieData.diePrefab, m_diceBagLoc.position, Quaternion.identity);
                 _newBaseDie.Initialize();
                 m_rosterDice.Add(_newBaseDie);
             }
 
+        }
+        
+        
+        public void InitializeDice()
+        {
             if (m_rosterDice.IsNull() || m_rosterDice.Count == 0)
             {
-                Debug.Log("<color=red>Problem with Roster Dice</color>");
-                return;
+                CreateDice();
             }
+            
+            DisplayDice(true);
             
             m_diceSelectors.ForEach(g => g.SetActive(true));
 
             m_currentRollsAmount = maxRollsAmount;
 
+            amountOfTries = m_maxAmountOfTries;
+
             m_currentState = DiceRollState.BEFORE_ROLL;
+        }
+
+        public void DisplayDice(bool _isDisplay)
+        {
+            if (!_isDisplay)
+            {
+                foreach (var _selectedDiceSpace in m_selectedDiceSpaces)
+                {
+                    _selectedDiceSpace.m_lockedGO.SetActive(false);
+                    _selectedDiceSpace.m_lockedDie.SetDraggable(true);
+                    m_rosterDice.Add(_selectedDiceSpace.m_lockedDie);
+                    _selectedDiceSpace.m_lockedDie = null;
+                }
+            }
+            
+            for(int i = 0; i < m_rosterDice.Count; i++)
+            {
+                m_rosterDice[i].MoveDie(_isDisplay ? m_rollableDiceSpaces[i].position 
+                    : m_diceBagLoc.position, 0.25f, false);
+            }
         }
 
         void OnDieRollFinished(int obj)
@@ -247,6 +279,23 @@ namespace Runtime.Gameplay
                 return;
             }
 
+            if (!m_selectedDiceSpaces.TrueForAll(sdl => !sdl.m_lockedDie.IsNull()))
+            {
+                Debug.Log("<color=red>Not all locations filled</color>");
+                return;
+            }
+            
+            if (amountOfTries <= 0)
+            {
+                return;
+            }
+
+            if (m_currentState == DiceRollState.CALCULATING)
+            {
+                return;
+            }
+            
+            amountOfTries--;
             m_calculatedOutcome = 1;
 
             m_currentState = DiceRollState.CALCULATING;
@@ -280,8 +329,15 @@ namespace Runtime.Gameplay
                 bd.DoAction();
             });
 
+
             m_currentState = DiceRollState.ROLLING;
-            m_currentRollsAmount--;
+
+            if (!m_isInitialTryRoll)
+            {
+                m_currentRollsAmount--;
+            }
+            
+            m_isInitialTryRoll = false;
         }
 
         private void UpdateDiceLocations()
@@ -323,7 +379,7 @@ namespace Runtime.Gameplay
             
         }
 
-        private void ClearAllSelectedDice()
+        public void ClearAllSelectedDice()
         {
             foreach (var _selectedDiceSpace in m_selectedDiceSpaces)
             {
@@ -332,9 +388,7 @@ namespace Runtime.Gameplay
                 m_rosterDice.Add(_selectedDiceSpace.m_lockedDie);
                 _selectedDiceSpace.m_lockedDie = null;
             }
-
-            m_currentRollsAmount = maxRollsAmount;
-            m_selectedDiceCount = 0;
+            
             UpdateDiceLocations();
         }
 
@@ -582,6 +636,9 @@ namespace Runtime.Gameplay
         {
             ClearAllSelectedDice();
 
+            m_isInitialTryRoll = true;
+            m_selectedDiceCount = 0;
+            
             m_currentState = DiceRollState.BEFORE_ROLL;
         }
 

@@ -3,11 +3,13 @@ using Cysharp.Threading.Tasks;
 using Runtime.Character.StateMachines;
 using Runtime.GameControllers;
 using Runtime.Gameplay;
+using Runtime.RunStates;
 using TMPro;
 using UnityEngine;
 
 namespace Runtime.StateMachines
 {
+    [AddComponentMenu("State/Battle State")]
     public class BattleState: StateBase
     {
 
@@ -22,6 +24,12 @@ namespace Runtime.StateMachines
 
         #endregion
 
+        #region Private Fields
+
+        private EMapLocationType m_battleType;
+
+        #endregion
+        
         #region Accessors
 
         public float m_currentAmountToBeat { get; private set; }
@@ -32,12 +40,12 @@ namespace Runtime.StateMachines
 
         private void OnEnable()
         {
-            LocalDiceController.onOutcomeCalculated += LocalDiceControllerOnonOutcomeCalculated;
+            LocalDiceController.onOutcomeCalculated += LocalDiceControllerOnOutcomeCalculated;
         }
 
         private void OnDisable()
         {
-            LocalDiceController.onOutcomeCalculated -= LocalDiceControllerOnonOutcomeCalculated;
+            LocalDiceController.onOutcomeCalculated -= LocalDiceControllerOnOutcomeCalculated;
         }
 
         #endregion
@@ -48,17 +56,17 @@ namespace Runtime.StateMachines
         {
             await base.EnterState();
             LocalDiceController.Instance.InitializeDice();
-
         }
 
         public override void AssignArgument(params object[] _arguments)
         {
-            m_currentAmountToBeat = (float)_arguments[1];
-        }
-
-        public override void SetupState()
-        {
-            
+            var _modifer = (float)_arguments[0];
+            m_battleType = (EMapLocationType)_arguments[1];
+            m_currentAmountToBeat =
+                EnemyController.Instance.GetBattleScoreByLevel(LocalMapController.Instance.GetCurrentLevel()) * _modifer;
+            Debug.Log("Assign Arguement");
+            Debug.Log(m_currentAmountToBeat);
+            SetupCounter();
         }
 
         public override async UniTask ExitState()
@@ -73,8 +81,9 @@ namespace Runtime.StateMachines
         #region Class Implementation
 
         //Move to battle state manager
-        public void OnEnterBattleState()
+        public void SetupCounter()
         {
+            m_counterText.text = m_currentAmountToBeat.ToString(); 
             m_counterText.color = Color.black;
             m_counterBackground.color = Color.white;
             m_glow.color = Color.white;
@@ -94,9 +103,31 @@ namespace Runtime.StateMachines
 
             await UniTask.WaitForSeconds(0.2f);
 
+            if (m_currentAmountToBeat <= 0)
+            {
+                //Player beat Enemy
+                //1. Remove battle area
+                //2. Rewards
+                //3. Return to Map
+                LocalDiceController.Instance.DisplayDice(false);
+                stateManager.ChangeState(m_battleType == EMapLocationType.E_BATTLE ? ERunState.MAP : ERunState.REWARD);
+                return;
+            }
+
+            if (LocalDiceController.Instance.amountOfTries > 0)
+            {
+                LocalDiceController.Instance.OnResetDiceAfterPlay();
+                return;
+            }
+            
+            //LOSE CONDITION REACHED
+            //1. Go to map
+            //2. Subtract lives or restart run.
+            LocalDiceController.Instance.DisplayDice(false);
+            stateManager.ChangeState(ERunState.LOSE);
         }
 
-        private void LocalDiceControllerOnonOutcomeCalculated(float _calculatedOutcome)
+        private void LocalDiceControllerOnOutcomeCalculated(float _calculatedOutcome)
         {
             T_ShowResults(_calculatedOutcome);
         }
@@ -104,7 +135,6 @@ namespace Runtime.StateMachines
         private async UniTask T_CountToNumber(float _newValue)
         {
             
-            Debug.Log(_newValue);
             float _previousValue = m_currentAmountToBeat;
             int _stepAmount;
             float _waitTime = 1 / m_countFPS;
@@ -115,8 +145,6 @@ namespace Runtime.StateMachines
 
             _stepAmount = Mathf.Abs(_stepAmount);
             
-            Debug.Log(_stepAmount);
-
             //Going up
             if (_previousValue < _newValue)
             {
@@ -139,7 +167,7 @@ namespace Runtime.StateMachines
                     await UniTask.WaitForSeconds(_waitTime);
                 }
             }
-            else
+            else //Going down
             {
                 while (_previousValue > _newValue)
                 {

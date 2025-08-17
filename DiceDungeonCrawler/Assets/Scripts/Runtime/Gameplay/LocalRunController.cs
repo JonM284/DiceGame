@@ -1,4 +1,5 @@
-﻿using Cysharp.Threading.Tasks;
+﻿using System;
+using Cysharp.Threading.Tasks;
 using DG.Tweening;
 using Runtime.Character.StateMachines;
 using Runtime.GameControllers;
@@ -28,6 +29,8 @@ namespace Runtime.Gameplay
 
         private float m_amountToBeat;
 
+        private bool m_isInventoryOpen, m_isModifiersOpen;
+
         #endregion
 
         #region Class Implementation
@@ -38,6 +41,55 @@ namespace Runtime.Gameplay
             m_runStateManager.InitStateMachine(ERunState.MAP);
         }
 
+        public void OpenInventory()
+        {
+            if (m_runStateManager.isTransitioning)
+            {
+                return;
+            }
+
+            if (m_runStateManager.currentState.stateType != ERunState.MAP 
+            && m_runStateManager.currentState.stateType != ERunState.INVENTORY)
+            {
+                return;
+            }
+            
+            m_isInventoryOpen = !m_isInventoryOpen;
+            
+            if (!m_isInventoryOpen)
+            {
+                m_runStateManager.ChangeState(ERunState.INVENTORY);
+            }
+            else
+            {
+                m_runStateManager.ReturnToPreviousState();
+            }
+        }
+
+        public void OpenModifiers()
+        {
+            if (m_runStateManager.isTransitioning)
+            {
+                return;
+            }
+
+            if (m_runStateManager.currentState.stateType == ERunState.REWARD ||
+                m_runStateManager.currentState.stateType == ERunState.LOSE)
+            {
+                return;
+            }
+            
+            m_isModifiersOpen = !m_isModifiersOpen;
+            
+            if (!m_isModifiersOpen)
+            {
+                m_runStateManager.ChangeState(ERunState.MODIFIER_SWAP);
+            }
+            else
+            {
+                m_runStateManager.ReturnToPreviousState();
+            }
+        }
         
         #endregion
 

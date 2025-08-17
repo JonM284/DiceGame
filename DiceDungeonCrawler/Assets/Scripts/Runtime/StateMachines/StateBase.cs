@@ -13,16 +13,30 @@ namespace Runtime.Character.StateMachines
     public abstract class StateBase: MonoBehaviour
     {
 
+        #region Public Fields
+
+        public bool isSubState, isCurveIn;
+        public AnimationCurve animationCurve;
         public Ease easeType = Ease.Linear;
         public float moveDuration = 1f;
         public List<MoverGroups> movables = new List<MoverGroups>();
-        
-        public bool isCompleted { get; protected set; }
-        protected float startTime;
-        protected float currentTime => Time.time - startTime;
-        protected StateManager stateManager;
 
+        #endregion
+
+        #region Protected Fields
+
+        protected StateManager stateManager;
+        
+        #endregion
+
+        #region Accessors
+
+        public bool isCompleted { get; protected set; }
+        
         public ERunState stateEnum { get; protected set; }
+
+        #endregion
+        
 
         /// <summary>
         /// When character and stateMachine are initialized. Get All necessary managers for the state at this time
@@ -58,11 +72,6 @@ namespace Runtime.Character.StateMachines
         /// </summary>
         /// <param name="_arguments">Arguments are passed as objects and casted when reaching the correct function</param>
         public abstract void AssignArgument(params object[] _arguments);
-        
-        /// <summary>
-        /// Update this state every frame. NOTE: currently not necessary
-        /// </summary>
-        public abstract void SetupState();
 
         /// <summary>
         /// Called before state is changed.
@@ -76,11 +85,21 @@ namespace Runtime.Character.StateMachines
             
             await MoveObjects(false);
 
+            if (isSubState)
+            {
+                return;
+            }
+
             ActivateObjects(false);
         }
 
         protected void ActivateObjects(bool _isActive)
         {
+            if (movables.IsNull() || movables.Count == 0)
+            {
+                return;
+            }
+            
             movables.ForEach(mg => mg.target.gameObject.SetActive(_isActive));
         }
 
@@ -98,9 +117,20 @@ namespace Runtime.Character.StateMachines
                 {
                     continue;
                 }
+
+                if (isCurveIn)
+                {
+                    _moveSequence.Insert(_currentTime,_movable.target.DOMove(_isStart ? _movable.onScreenPosition 
+                            : _movable.offScreenPosition,
+                        moveDuration).SetEase(animationCurve));
+                }
+                else
+                {
+                    _moveSequence.Insert(_currentTime,_movable.target.DOMove(_isStart ? _movable.onScreenPosition 
+                            : _movable.offScreenPosition,
+                        moveDuration).SetEase(easeType));
+                }
                 
-                _moveSequence.Insert(_currentTime,_movable.target.DOMove(_isStart ? _movable.onScreenPosition : _movable.offScreenPosition,
-                    moveDuration).SetEase(easeType));
                 _currentTime += _timeOffset;
             }
 

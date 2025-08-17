@@ -8,6 +8,7 @@ using UnityEngine;
 
 namespace Runtime.StateMachines
 {
+    [AddComponentMenu("State/Map State")]
     public class MapState: StateBase
     {
 
@@ -20,8 +21,11 @@ namespace Runtime.StateMachines
         
         public override async UniTask EnterState()
         {
+            //Draw Map outside of player's view
+            await LocalMapController.Instance.T_DrawMapAsync();
+            //Move map to player
             await base.EnterState();
-            LocalMapController.Instance.DrawMap();
+            //Change camera Angle (might not be necessary)
             LocalCameraController.Instance.RotateCameraTo(m_mapCamRot, m_rotationDuration);
         }
 
@@ -30,14 +34,11 @@ namespace Runtime.StateMachines
             
         }
 
-        public override void SetupState()
-        {
-            
-        }
-
         public override async UniTask ExitState()
         {
+            //Reset Camera
             LocalCameraController.Instance.RotateCameraTo(m_defaultCamRot, m_rotationDuration);
+            //Move map off screen
             await base.ExitState();
         }
         

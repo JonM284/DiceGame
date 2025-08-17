@@ -10,18 +10,18 @@ namespace Data.DataSaving
     public class SavedGameData
     {
         
-        public int levelIndex, chosenEventIndex, savedMapSelectionLevel;
-        public string m_currentEventIdetifier;
-        public Vector3 m_lastPressedMapPoisiton;
+        public int levelIndex;
+        public MapPointData lastSelectedPoint;
         public List<SavedDiceData> m_savedDiceRoster, m_savedInventory, m_savedPerkDice;
-        public List<LocalMapController.RowData> savedMap = new List<LocalMapController.RowData>();
+        public List<LevelItem> savedRunLevels;
         
         public SavedGameData()
         {
             this.levelIndex = 0;
-            this.chosenEventIndex = 0;
-            this.m_currentEventIdetifier = "";
-            this.m_lastPressedMapPoisiton = Vector3.zero;
+            m_savedDiceRoster = new List<SavedDiceData>();
+            m_savedInventory = new List<SavedDiceData>();
+            m_savedPerkDice = new List<SavedDiceData>();
+            savedRunLevels = new List<LevelItem>();
         }
     }
 }

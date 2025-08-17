@@ -11,7 +11,7 @@ namespace Runtime.Gameplay
 
         #region Actions
 
-        public static event Action<EMapLocationType> OnLocationSelected;
+        public static event Action<MapLocationAction> OnLocationSelected;
 
         #endregion
 
@@ -22,6 +22,9 @@ namespace Runtime.Gameplay
         [SerializeField] private SpriteRenderer m_iconSR;
 
         [SerializeField] private Collider m_collider;
+
+        [SerializeField] private Color normalColor = Color.grey,
+            hoverColor = Color.green;
 
         #endregion
 
@@ -35,21 +38,28 @@ namespace Runtime.Gameplay
 
         public Vector3 savedLocation { get; private set; }
 
+        public MapPointData assignedData { get; private set; }
+
         #endregion
 
         #region Class Implementation
 
-        public void Initialize(GameplayEventType _eventType)
+        public void Initialize(GameplayEventType _eventType, MapPointData _assignedData)
         {
-            if (_eventType.IsNull())
+            if (_eventType.IsNull() || _assignedData.IsNull())
             {
                 return;
             }
-
+            
+            assignedData = _assignedData;
             m_assignedEventData = _eventType;
             locationType = _eventType.locationType;
             m_iconSR.sprite = _eventType.eventSprite;
+            m_iconSR.color = normalColor;
             savedLocation = transform.localPosition;
+            
+            m_collider.enabled = false;
+            canBeSelected = false;
         }
 
         public void SetSelectable(bool _isSelectable)
@@ -58,6 +68,12 @@ namespace Runtime.Gameplay
             m_collider.enabled = _isSelectable;
         }
 
+        public void SetPassed()
+        {
+            canBeSelected = false;
+            m_collider.enabled = false;
+        }
+        
         #endregion
 
         #region ISelectable Inherited Methods
@@ -69,7 +85,7 @@ namespace Runtime.Gameplay
                 return;
             }
             
-            OnLocationSelected?.Invoke(locationType);
+            OnLocationSelected?.Invoke(this);
         }
 
         public void OnUnselect()
@@ -83,7 +99,8 @@ namespace Runtime.Gameplay
             {
                 return;
             }
-            
+
+            m_iconSR.color = hoverColor;
             m_highlightGO.SetActive(true);
         }
 
@@ -95,6 +112,7 @@ namespace Runtime.Gameplay
             }
 
             m_highlightGO.SetActive(false);
+            m_iconSR.color = normalColor;
         }
 
         #endregion

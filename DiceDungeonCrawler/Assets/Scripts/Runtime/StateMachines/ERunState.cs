@@ -9,5 +9,8 @@
         ITEM_DROP,
         TINT,
         INVENTORY,
+        REWARD,
+        LOSE,
+        MODIFIER_SWAP,
     }
 }
