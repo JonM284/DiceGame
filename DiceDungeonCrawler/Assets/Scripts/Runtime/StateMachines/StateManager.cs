@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using Project.Scripts.Utils;
+using Rewired;
 using Runtime.GameControllers;
 using Runtime.Gameplay;
 using Runtime.RunStates;
@@ -16,6 +18,8 @@ namespace Runtime.Character.StateMachines
 
         #region Serialized Fields
 
+        [SerializeField] private Camera m_mainCamera;
+        
         [SerializeField]
         protected List<StateListItem> m_states = new List<StateListItem>();
 
@@ -23,8 +27,11 @@ namespace Runtime.Character.StateMachines
 
         #region Protected Fields
 
-        protected StateListItem m_foundState, m_previousState, m_currentSubState;
-        protected bool m_isRunning;
+        protected StateListItem foundState, previousState, currentSubState;
+        
+        protected bool interactionGuard;
+        
+        protected CancellationTokenSource cts;
         
         #endregion
 
@@ -33,6 +40,10 @@ namespace Runtime.Character.StateMachines
         public StateListItem currentState { get; private set; }
 
         public bool isTransitioning { get; private set; }
+
+        public Player rwPlayer { get; private set; }
+
+        public Camera mainCam => m_mainCamera;
 
         #endregion
 
@@ -48,6 +59,21 @@ namespace Runtime.Character.StateMachines
             MapLocationAction.OnLocationSelected -= OnLocationSelected;
         }
 
+        private void Awake()
+        {
+            rwPlayer = ReInput.players.GetPlayer(0);
+        }
+
+        private void Update()
+        {
+            if (currentState.IsNull())
+            {
+                return;
+            }
+            
+            currentState.stateBehavior.UpdateState();
+        }
+
         #endregion
 
         #region Class Implementation
@@ -59,11 +85,19 @@ namespace Runtime.Character.StateMachines
                 return;
             }
 
-            T_OnLocationSelected(mapLocationAction);
+            T_OnLocationSelected(mapLocationAction).Forget();
         }
 
         private async UniTask T_OnLocationSelected(MapLocationAction mapLocationAction)
         {
+            if (!cts.IsNull())
+            {
+                cts.Cancel();
+            }
+
+            cts = new CancellationTokenSource();
+            cts.Token.ThrowIfCancellationRequested();
+            
             LocalMapController.Instance.IncreaseCurrentMapLevel();
             
             //Level Point Visuals + moving player piece
@@ -75,28 +109,28 @@ namespace Runtime.Character.StateMachines
             switch (mapLocationAction.locationType)
             {
                 case EMapLocationType.E_BATTLE: case EMapLocationType.M_BATTLE: case EMapLocationType.H_BATTLE:
-                    await T_TransitionState(ERunState.BATTLE);
+                    await T_TransitionState(ERunState.BATTLE, cts.Token);
                     object[] arg = {EnemyController.Instance.GetBattleMod(mapLocationAction.locationType), mapLocationAction.locationType};
                     AssignValuesToCurrentState(arg);
                     break;
                 case EMapLocationType.TINT:
-                    await T_TransitionState(ERunState.TINT);
+                    await T_TransitionState(ERunState.TINT, cts.Token);
                     break;
                 case EMapLocationType.SHOP:
-                    await T_TransitionState(ERunState.SHOP);
+                    await T_TransitionState(ERunState.SHOP, cts.Token);
                     break;
                 case EMapLocationType.ITEM:
-                    await T_TransitionState(ERunState.ITEM_DROP);
+                    await T_TransitionState(ERunState.ITEM_DROP, cts.Token);
                     break;
             }
         }
         
-        public async UniTask InitStateMachine(ERunState _startingState)
+        public async UniTask InitStateMachine(ERunState _startingState, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
+            foundState = m_states.FirstOrDefault(sli => sli.stateType == _startingState);
 
-            m_foundState = m_states.FirstOrDefault(sli => sli.stateType == _startingState);
-
-            if (m_foundState.IsNull())
+            if (foundState.IsNull())
             {
                 return;
             }
@@ -104,50 +138,111 @@ namespace Runtime.Character.StateMachines
             foreach (var _state in m_states)
             {
                 _state.stateBehavior.InitState(this, _state.stateType);
-                await UniTask.WaitForEndOfFrame();
+                await UniTask.WaitForEndOfFrame(token);
             }
             
-            currentState = m_foundState;
-            currentState.stateBehavior?.EnterState();
+            currentState = foundState;
+            currentState.stateBehavior?.EnterState(token).Forget();
 
-            m_foundState = null;
-            m_isRunning = true;
+            foundState = null;
         }
 
-        public void UninitStateMachine()
+        public async UniTask UninitStateMachine()
         {
-            m_isRunning = false;
-            currentState.stateBehavior.ExitState();
+            cts = new CancellationTokenSource();
+            await currentState.stateBehavior.ExitState(cts.Token);
             currentState = null;
+            cts.Cancel();
         }
-        
-        /*public void AddState(ECharacterStates _state, StateBase _stateBehavior)
+
+        public void DoSubstateProcess(bool isEnter, ERunState _substate)
         {
-            if (m_states.Contains(_state))
+            if (isTransitioning || interactionGuard)
             {
-                Debug.LogError($"Already contains state: {_state.ToString()}");
                 return;
             }
 
-            if (_stateBehavior.IsNull())
+            if (isEnter)
             {
+                currentSubState = m_states.FirstOrDefault(c => c.stateType == _substate);
+
+                if (currentSubState.IsNull())
+                {
+                    isTransitioning = false;
+                    return;
+                }
+            }
+            else
+            {
+                if (currentSubState.IsNull())
+                {
+                    return;
+                }
+            }
+
+            if (!cts.IsNull())
+            {
+                cts.Cancel();
+            }
+
+            cts = new CancellationTokenSource();
+            T_RunSubstateProcessAsync(isEnter, cts.Token).Forget();
+        }
+
+        private async UniTask T_RunSubstateProcessAsync(bool isIn, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+
+            isTransitioning = true;
+            
+            if (currentState.IsNull())
+            {
+                isTransitioning = false;
                 return;
             }
-            
-            m_states.Add(_state, _stateBehavior);
-        }*/
-        
+
+            if (isIn)
+            {
+                //Take away current state, but don't transition to another state
+                await currentState.stateBehavior.SuspendState(false,token);
+                //Bring in current substate
+                await currentSubState.stateBehavior.EnterState(token);
+            }
+            else
+            {
+                //Take away supstate
+                await currentSubState.stateBehavior.ExitState(token);
+                //bring back suspended main state
+                await currentState.stateBehavior.SuspendState(true, token);
+
+                currentSubState = null;
+            }
+
+            isTransitioning = false;
+        }
+
         public void ChangeState(ERunState _newState)
         {
-            T_TransitionState(_newState);
+            if (isTransitioning || interactionGuard)
+            {
+                return;
+            }
+
+            if (!cts.IsNull())
+            {
+                cts.Cancel();
+            }
+
+            cts = new CancellationTokenSource();
+            T_TransitionState(_newState, cts.Token).Forget();
         }
 
-        private async UniTask T_TransitionState(ERunState _newState)
+        private async UniTask T_TransitionState(ERunState _newState, CancellationToken token)
         {
             isTransitioning = true;
-            m_foundState = m_states.FirstOrDefault(c => c.stateType == _newState);
+            foundState = m_states.FirstOrDefault(c => c.stateType == _newState);
             
-            if (m_foundState.IsNull())
+            if (foundState.IsNull())
             {
                 Debug.LogError($"Doesn't contain definition for state: {_newState.ToString()}");
                 return;
@@ -159,44 +254,39 @@ namespace Runtime.Character.StateMachines
             }
             
             Debug.Log($"Exiting State: {currentState.stateType.ToString()}");
-            await currentState.stateBehavior.ExitState();
-            m_previousState = currentState;
-            Debug.Log($"Previous State saved: {m_previousState.stateType.ToString()}");
-            currentState = m_foundState;
-            await currentState.stateBehavior.EnterState();
-            m_foundState = null;
+            
+            await currentState.stateBehavior.ExitState(token);
+            previousState = currentState;
+            
+            Debug.Log($"Previous State saved: {previousState.stateType.ToString()}");
+
+            currentState = foundState;
+            await currentState.stateBehavior.EnterState(token);
+            
+            foundState = null;
             Debug.Log($"Entered State: {currentState.stateType.ToString()}");
             isTransitioning = false;
         }
 
         public void ReturnToPreviousState()
         {
-            if (m_previousState.IsNull())
+            if (previousState.IsNull())
             {
                 return;
             }
             
-            ChangeState(m_previousState.stateType);
+            ChangeState(previousState.stateType);
+        }
+
+        public void ChangeInteractionGuard(bool isActive)
+        {
+            interactionGuard = isActive;
         }
 
         private void AssignValuesToCurrentState(params object[] _arguments)
         {
             currentState.stateBehavior.AssignArgument(_arguments);
         }
-
-
-        /*public StateBase GetState(ECharacterStates _states)
-        {
-            if (!m_states.ContainsKey(_states))
-            {
-                Debug.LogError($"Doesn't contain definition for state: {_states.ToString()}");
-                return default;
-            }
-
-            m_states.TryGetValue(_states, out m_foundState);
-
-            return m_foundState;
-        }*/
 
         public ERunState GetCurrentStateEnum()
         {

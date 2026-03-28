@@ -356,12 +356,15 @@ MonoBehaviour:
   - type: 0
     elementIdentifier: 30
     componentElementIdentifiers: 0000000001000000
+    intValue0: 0
   - type: 0
     elementIdentifier: 32
     componentElementIdentifiers: 0500000021000000
+    intValue0: 1
   - type: 10
     elementIdentifier: 35
     componentElementIdentifiers: 1a0000001b0000001c0000001d000000
+    intValue0: 0
   directInput:
     description: 
     matchingCriteria:

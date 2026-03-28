@@ -1,4 +1,6 @@
-﻿using DG.Tweening;
+﻿using System.Threading;
+using Cysharp.Threading.Tasks;
+using DG.Tweening;
 using Project.Scripts.Utils;
 using UnityEngine;
 
@@ -36,19 +38,22 @@ namespace Runtime.GameControllers
         
         #region Class Implementation
 
-        public void MoveCameraTo(Vector3 _newPosition, float _duration)
+        public async UniTask MoveCameraToAsync(Vector3 _newPosition, float _duration, CancellationToken token)
         {
-            m_cameraPositionTracker.DOMove(_newPosition, _duration).SetEase(Ease.Linear);
+            token.ThrowIfCancellationRequested();
+            await m_cameraPositionTracker.DOMove(_newPosition, _duration).SetEase(Ease.Linear).AsyncWaitForCompletion();
         }
 
-        public void RotateCameraTo(Vector3 _endRotation, float _duration)
+        public async UniTask RotateCameraTo(Vector3 _endRotation, float _duration, CancellationToken token)
         {
-            m_cameraRotationTracker.DORotate(_endRotation, _duration).SetEase(Ease.Linear);
+            token.ThrowIfCancellationRequested();
+            await m_cameraRotationTracker.DORotate(_endRotation, _duration).SetEase(Ease.Linear).AsyncWaitForCompletion();
         }
 
-        public void ZoomCamera(float _endZoom, float _duration)
+        public async UniTask ZoomCamera(float _endZoom, float _duration, CancellationToken token)
         {
-            m_cameraZoomTracker.DOMoveZ(_endZoom, _duration).SetEase(Ease.Linear);
+            token.ThrowIfCancellationRequested();
+            await m_cameraZoomTracker.DOMoveZ(_endZoom, _duration).SetEase(Ease.Linear).AsyncWaitForCompletion();
         }
 
         #endregion

@@ -24,6 +24,47 @@ namespace Project.Scripts.Utils
             return _vector;
         }
 
+        public static Vector3 FlattenVectorToZ(this Vector3 _vector, float _desiredZ)
+        {
+            _vector.z = _desiredZ;
+            return _vector;
+        }
+
+        public static Vector3 ShiftPositionTo(this Vector3 _vector, Vector3 _compareVector, int _xyz)
+        {
+            switch (_xyz)
+            {
+                case 2: //z
+                    _vector.z -= (_compareVector.z - _vector.z);
+                    break;
+                case 1: //y
+                    _vector.y -= (_compareVector.y - _vector.y);
+                    break;
+                default: //x
+                    _vector.x -= (_compareVector.x - _vector.x);
+                    break;
+            }
+
+            return _vector;
+        }
+        
+        public static Vector3 ShiftPositionTo(this Vector3 _vector, float _compareFloat, int _xyz)
+        {
+            switch (_xyz)
+            {
+                case 2: //z
+                    _vector.z -= (_compareFloat - _vector.z);
+                    break;
+                case 1: //y
+                    _vector.y -= (_compareFloat - _vector.y);
+                    break;
+                default: //x
+                    _vector.x -= (_compareFloat - _vector.x);
+                    break;
+            }
+
+            return _vector;
+        }
         public static bool IsApprox(Vector3 _a, Vector3 _b, float _threshold = 0.1f)
         {
             return Mathf.Abs(_a.x - _b.x) < _threshold 

@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using Data.DataSaving;
+using NUnit.Framework;
 
 namespace Runtime.Gameplay
 {
@@ -10,6 +12,6 @@ namespace Runtime.Gameplay
     public class LevelItem
     {
         public int levelIndex;
-        public List<MapPointData> levelPoints = new List<MapPointData>();
+        public List<MapPointData> levelPoints = new  List<MapPointData>();
     }
 }

@@ -1,15 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using DG.Tweening;
 using Project.Scripts.Utils;
 using Rewired;
 using Runtime.Dice;
+using Runtime.Dice.Enums;
 using Runtime.GameControllers;
 using Runtime.Selection;
 using UnityEngine;
 using Utils;
+using Random = UnityEngine.Random;
 
 namespace Runtime.Gameplay
 {
@@ -60,14 +63,13 @@ namespace Runtime.Gameplay
         #region Private Fields
 
         private List<BaseDie> m_rosterDice = new List<BaseDie>();
-        //private List<BaseDie> m_selectedDice = new List<BaseDie>();
         
         private int m_selectedDiceCount, m_currentRollsAmount;
 
-        private bool m_isAddingToSelection, m_isInitialTryRoll;
+        private bool m_isAddingToSelection, isFreeRoll;
 
         private float m_timeBetweenSpins = 0.5f, m_timeSinceLastSpin;
-        private float m_calculatedOutcome;
+        private long m_calculatedOutcome;
 
         private enum DiceRollState
         {
@@ -91,6 +93,9 @@ namespace Runtime.Gameplay
         private SelectedDiceLocations m_currentSpace;
 
         private int m_maxAmountOfTries = 3;
+        private float currentEndValueModValue;
+
+        private CancellationTokenSource cts;
 
         #endregion
 
@@ -103,24 +108,6 @@ namespace Runtime.Gameplay
         #endregion
 
         #region Unity Events
-
-        private void OnEnable()
-        {
-            PlayableDice.onDieRollFinished += OnDieRollFinished;
-            BaseDie.onDieSelected += OnDieSelected;
-            BaseDie.onDieUnselected += OnDieUnSelected;
-            BaseDie.onDieHovered += OnDieHovered;
-            BaseDie.onDieUnhovered += OnDieUnHovered;
-        }
-
-        private void OnDisable()
-        {
-            PlayableDice.onDieRollFinished -= OnDieRollFinished;
-            BaseDie.onDieSelected -= OnDieSelected;
-            BaseDie.onDieUnselected -= OnDieUnSelected;
-            BaseDie.onDieHovered -= OnDieHovered;
-            BaseDie.onDieUnhovered -= OnDieUnHovered;
-        }
 
         private void Start()
         {
@@ -169,106 +156,121 @@ namespace Runtime.Gameplay
         }
         
         
-        public void InitializeDice()
+        public async UniTask InitializeDice(CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
             if (m_rosterDice.IsNull() || m_rosterDice.Count == 0)
             {
                 CreateDice();
             }
             
-            DisplayDice(true);
+            await DisplayDice(true, token);
             
             m_diceSelectors.ForEach(g => g.SetActive(true));
 
             m_currentRollsAmount = maxRollsAmount;
-
+            
             amountOfTries = m_maxAmountOfTries;
-
+            
             m_currentState = DiceRollState.BEFORE_ROLL;
         }
 
-        public void DisplayDice(bool _isDisplay)
+        public async UniTask DisplayDice(bool isDisplay, CancellationToken token)
         {
-            if (!_isDisplay)
+            token.ThrowIfCancellationRequested();
+
+            if (m_rosterDice.Count == 0)
             {
-                foreach (var _selectedDiceSpace in m_selectedDiceSpaces)
-                {
-                    _selectedDiceSpace.m_lockedGO.SetActive(false);
-                    _selectedDiceSpace.m_lockedDie.SetDraggable(true);
-                    m_rosterDice.Add(_selectedDiceSpace.m_lockedDie);
-                    _selectedDiceSpace.m_lockedDie = null;
-                }
+                CreateDice();
             }
             
-            for(int i = 0; i < m_rosterDice.Count; i++)
+            try
             {
-                m_rosterDice[i].MoveDie(_isDisplay ? m_rollableDiceSpaces[i].position 
-                    : m_diceBagLoc.position, 0.25f, false);
+                var tasks = new List<UniTask>();
+
+                for (int i = 0; i < m_rosterDice.Count; i++)
+                {
+                    tasks.Add(m_rosterDice[i].MoveDieAsync(isDisplay
+                        ? m_rollableDiceSpaces[i].position
+                        : m_diceBagLoc.position, 0.25f, false, token));
+                }
+
+                await tasks;
+            }
+            catch
+            {
+                Debug.LogError("[ERROR] Display Dice token cancelled");
+                for (int i = 0; i < m_rosterDice.Count; i++)
+                {
+                    m_rosterDice[i].transform.position = isDisplay
+                        ? m_rollableDiceSpaces[i].position
+                        : m_diceBagLoc.position;
+                }
             }
         }
 
-        void OnDieRollFinished(int obj)
+        [ContextMenu("Roll All Dice")]
+        public void RollDice()
         {
-            if (!m_rosterDice.TrueForAll(bd => !bd.isRolling))
+            if (m_rosterDice.IsNull() || m_rosterDice.Count == 0)
             {
+                Debug.Log("Roster Dice null or empty");
                 return;
             }
 
-            Debug.Log(m_rosterDice.Count);
+            if (m_currentState is DiceRollState.ROLLING or DiceRollState.CALCULATING)
+            {
+                Debug.Log($"Current Rolling State: {m_currentState.ToString()}");
+                return;
+            }
+
+            if (m_currentRollsAmount <= 0 && !isFreeRoll)
+            {
+                Debug.Log($"Rolls amount <= 0 and not a free roll");
+                return;
+            }
+
+            if (cts.IsNull())
+            {
+                cts = new CancellationTokenSource();
+            }
+            
+            RollDiceAsync(cts.Token).Forget();
+
+            m_currentState = DiceRollState.ROLLING;
+
+            if (!isFreeRoll)
+            {
+                m_currentRollsAmount--;
+            }
+            
+            isFreeRoll = false;
+        }
+
+        private async UniTask RollDiceAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+
+            var rollTasks = new List<UniTask>();
+            m_rosterDice.ForEach(bd =>
+            {
+                bd.SelectEffects(false);
+                bd.EnablePhysics(true);
+                rollTasks.Add(bd.DoActionAsync(token));
+            });
+
+            await rollTasks;
             
             m_rosterDice.ForEach(bd =>
             {
-                bd.SelectEffects(true);
+                bd.SelectEffects(false);
                 bd.EnablePhysics(false);
             });
             
-            UpdateDiceLocations();
+            await UpdateDiceLocationsAsync(token);
             
             m_currentState = DiceRollState.SELECTING;
-        }
-        
-        /// <summary>
-        /// Player Selects Die during selection phase of dice roll
-        /// </summary>
-        /// <param name="_selectedDie">Die to be added or subtracted</param>
-        void OnDieSelected(BaseDie _selectedDie)
-        {
-            if (_selectedDie.IsNull())
-            {
-                return;
-            }
-
-            if (_selectedDie is PlayableDice)
-            {
-                SelectPlayableDie(_selectedDie);
-            }
             
-        }
-
-        private void SelectPlayableDie(BaseDie _selectedDie)
-        {
-            /*if (m_currentState != DiceRollState.SELECTING)
-            {
-                return;
-            }
-
-            if (m_selectedDice.Contains(_selectedDie))
-            {
-                m_rosterDice.Add(_selectedDie);
-                m_selectedDice.Remove(_selectedDie);
-                UpdateDiceLocations();
-                return;
-            }
-
-            if (m_selectedDice.Count >= maxSelectedDice)
-            {
-                return;
-            }
-            
-            m_selectedDice.Add(_selectedDie);
-            m_rosterDice.Remove(_selectedDie);
-
-            UpdateSelectedDiceLocations();*/
         }
 
         [ContextMenu("Calculate outcome")]
@@ -279,9 +281,9 @@ namespace Runtime.Gameplay
                 return;
             }
 
-            if (!m_selectedDiceSpaces.TrueForAll(sdl => !sdl.m_lockedDie.IsNull()))
+            if (m_selectedDiceSpaces.TrueForAll(sdl => sdl.m_lockedDie.IsNull()))
             {
-                Debug.Log("<color=red>Not all locations filled</color>");
+                Debug.Log("<color=red>No Location filled</color>");
                 return;
             }
             
@@ -297,57 +299,28 @@ namespace Runtime.Gameplay
             
             amountOfTries--;
             m_calculatedOutcome = 1;
-
+            
             m_currentState = DiceRollState.CALCULATING;
 
-            T_RunCalculationSequence();
+            if (!cts.IsNull())
+            {
+                cts.Cancel();
+            }
 
+            cts = new CancellationTokenSource();
+            CalculationSequenceAsync(cts.Token).Forget();
         }
 
-        [ContextMenu("Roll All Dice")]
-        public void RollDice()
+        
+        private async UniTask UpdateDiceLocationsAsync(CancellationToken token)
         {
-            if (m_rosterDice.IsNull() || m_rosterDice.Count == 0)
-            {
-                return;
-            }
-
-            if (m_currentState is DiceRollState.ROLLING or DiceRollState.CALCULATING)
-            {
-                return;
-            }
-
-            if (m_currentRollsAmount <= 0)
-            {
-                return;
-            }
-            
-            m_rosterDice.ForEach(bd =>
-            {
-                bd.SelectEffects(false);
-                bd.EnablePhysics(true);
-                bd.DoAction();
-            });
-
-
-            m_currentState = DiceRollState.ROLLING;
-
-            if (!m_isInitialTryRoll)
-            {
-                m_currentRollsAmount--;
-            }
-            
-            m_isInitialTryRoll = false;
-        }
-
-        private void UpdateDiceLocations()
-        {
-            UpdateRosterDiceLocations();
-            UpdateSelectedDiceLocations();
+            await UpdateRosterDiceLocationsAsync(token);
         }
         
-        private void UpdateRosterDiceLocations()
+        private async UniTask UpdateRosterDiceLocationsAsync(CancellationToken token)
         {
+            var tasks = new List<UniTask>();
+            
             for (int i = 0; i < m_rosterDice.Count; i++)
             {
                 if (VectorUtils.IsApprox(m_rosterDice[i].transform.position, m_rollableDiceSpaces[i].position))
@@ -355,41 +328,44 @@ namespace Runtime.Gameplay
                     continue;
                 }
                 
-                m_rosterDice[i].MoveDie(m_rollableDiceSpaces[i].position, 0.25f, false);
+                tasks.Add(m_rosterDice[i].MoveDieAsync(m_rollableDiceSpaces[i].position, 0.25f, false, token));
             }
+
+            await tasks;
         }
         
-        private void UpdateSelectedDiceLocations()
+        public async UniTask ResetDiceAfterBattle(CancellationToken token)
         {
-
-            /*for (int i = 0; i < m_selectedDice.Count; i++)
-            {
-                if (VectorUtils.IsApprox(m_selectedDice[i].transform.position, m_selectedDiceSpaces[i].m_positionRef.position))
-                {
-                    continue;
-                }
-
-                var _angle = Vector3.Angle(m_selectedDice[i].m_currentUpSide.associatedFace.forward,
-                    m_mainCamera.transform.position - m_selectedDice[i].transform.position);
-                
-                Debug.Log($"Angle:{_angle}");
-                
-                m_selectedDice[i].MoveDie(m_selectedDiceSpaces[i].m_positionRef.position, 0.25f, true);
-            }*/
+            token.ThrowIfCancellationRequested();
             
+            ResetPlayedDice();
+            
+            await DisplayDice(false, token);
+            isFreeRoll = true;
+            m_selectedDiceCount = 0;
         }
 
-        public void ClearAllSelectedDice()
+        /// <summary>
+        /// Reset Dice in Lists not physically
+        /// </summary>
+        private void ResetPlayedDice()
         {
             foreach (var _selectedDiceSpace in m_selectedDiceSpaces)
             {
                 _selectedDiceSpace.m_lockedGO.SetActive(false);
+                
+                if(_selectedDiceSpace.m_lockedDie.IsNull()) continue;
+                
                 _selectedDiceSpace.m_lockedDie.SetDraggable(true);
                 m_rosterDice.Add(_selectedDiceSpace.m_lockedDie);
                 _selectedDiceSpace.m_lockedDie = null;
             }
-            
-            UpdateDiceLocations();
+        }
+        
+        private async UniTask ClearAllSelectedDiceAsync(CancellationToken token)
+        {
+            ResetPlayedDice();
+            await UpdateDiceLocationsAsync(token);
         }
 
         private void CheckDrag()
@@ -546,7 +522,12 @@ namespace Runtime.Gameplay
 
             currentDraggingDie.SetDraggable(false);
             m_rosterDice.Remove(currentDraggingDie);
-            UpdateRosterDiceLocations();
+            if (cts.IsNull())
+            {
+                cts = new CancellationTokenSource();
+            }
+            
+            UpdateRosterDiceLocationsAsync(cts.Token).Forget();
             m_selectedDiceCount++;
         }
 
@@ -565,36 +546,7 @@ namespace Runtime.Gameplay
         
         
         #endregion
-
-        #region Dice Interactions
-
-        private void OnDieUnHovered(BaseDie _baseDie)
-        {
-            if (_baseDie.IsNull())
-            {
-                return;
-            }
-            
-            _baseDie.HoverEffects(false);
-        }
-
-        private void OnDieHovered(BaseDie _baseDie)
-        {
-            if (_baseDie.IsNull())
-            {
-                return;
-            }
-            
-            _baseDie.HoverEffects(true);
-        }
-
-        private void OnDieUnSelected(BaseDie _baseDie)
-        {
-            
-        }
-
-        #endregion
-
+        
         #region Calculations
         
         /// <summary>
@@ -607,36 +559,77 @@ namespace Runtime.Gameplay
         /// PASSIVE = 5, //passive
         /// </summary>
 
-        private async UniTask T_RunCalculationSequence()
+        private async UniTask CalculationSequenceAsync(CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
+            
+            //ToDo: Need to Check Masks during this process
+
+            currentEndValueModValue = 0;
             
             await T_OnPlayModifiers();
-            
-            foreach (var _selectedDiceSpace in m_selectedDiceSpaces)
-            {
-                m_calculatedOutcome *= _selectedDiceSpace.m_lockedDie.dieValue;
-                Debug.Log($"<color=orange>Outcome: {m_calculatedOutcome}</color>");
-                _selectedDiceSpace.m_lockedDie.CalculationEffects();
-                UIController.Instance.CreateFloatingTextAtPosition(m_calculatedOutcome.ToString(), Color.white,
-                    _selectedDiceSpace.m_lockedDie.transform.position.FlattenVectorToY(_selectedDiceSpace.m_positionRef.position.y + 0.25f));
 
-                await T_OnScoreModifier(_selectedDiceSpace.m_lockedDie);
-                await UniTask.WaitForSeconds(m_calculationSpeed);
+            for (int i = 0; i < m_selectedDiceSpaces.Count; i++)
+            {
+                if (m_selectedDiceSpaces[i].m_lockedDie is not PlayableDice _currentDie)
+                {
+                    continue;
+                }
+                
+                var _currentCalculatedDieValue = _currentDie.dieValue;
+
+                if (_currentDie.TintType != TintType.NONE)
+                {
+                    _currentCalculatedDieValue = await ProcessDieTintAsync(i, _currentCalculatedDieValue, _currentDie.TintType, token);
+                }
+                
+                m_calculatedOutcome *= _currentCalculatedDieValue;
+                
+                m_selectedDiceSpaces[i].m_lockedDie.CalculationEffects();
+                
+                //ToDo: get rid of this or make it look nice
+                UIController.Instance.CreateFloatingTextAtPosition(_currentCalculatedDieValue.ToString(), Color.white,
+                    m_selectedDiceSpaces[i].m_lockedDie.transform.position.FlattenVectorToY(
+                        m_selectedDiceSpaces[i].m_positionRef.position.y + 0.25f));
+
+                await T_OnScoreModifier(m_selectedDiceSpaces[i].m_lockedDie);
+                await UniTask.WaitForSeconds(m_calculationSpeed, cancellationToken: token);
             }
 
             await T_OnHoldModifier();
 
             await T_OnPassiveModifier();
+
+            if (currentEndValueModValue == 0)
+            {
+                currentEndValueModValue = 1;
+            }
+            
+            m_calculatedOutcome = Convert.ToInt64(Math.Round(m_calculatedOutcome * currentEndValueModValue));
+            
+            if (Math.Abs(currentEndValueModValue) > 1)
+            {
+                UIController.Instance.CreateFloatingTextAtPosition($"x {currentEndValueModValue}", Color.white,
+                    m_selectedDiceSpaces[1].m_lockedDie.transform.position.FlattenVectorToY(
+                        m_selectedDiceSpaces[1].m_positionRef.position.y + 0.25f));
+                
+                await UniTask.WaitForSeconds(m_calculationSpeed, cancellationToken: token);
+            }
+            
+            UIController.Instance.CreateFloatingTextAtPosition($"Total: {m_calculatedOutcome}", Color.white,
+                m_selectedDiceSpaces[1].m_lockedDie.transform.position.FlattenVectorToY(
+                    m_selectedDiceSpaces[1].m_positionRef.position.y + 0.25f));
+                
+            await UniTask.WaitForSeconds(m_calculationSpeed, cancellationToken: token);
             
             onOutcomeCalculated?.Invoke(m_calculatedOutcome);
-            
         }
 
-        public void OnResetDiceAfterPlay()
+        public async UniTask OnResetDiceAfterPlay(CancellationToken token)
         {
-            ClearAllSelectedDice();
+            await ClearAllSelectedDiceAsync(token);
 
-            m_isInitialTryRoll = true;
+            isFreeRoll = true;
             m_selectedDiceCount = 0;
             
             m_currentState = DiceRollState.BEFORE_ROLL;
@@ -677,11 +670,39 @@ namespace Runtime.Gameplay
             
         }
 
+        private async UniTask<int> ProcessDieTintAsync(int index, int dieValue, TintType tintType, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+
+            float dieValueProxy = dieValue;
+            
+            switch (tintType)
+            {
+                case TintType.YELLOW:
+                    dieValueProxy *= IsRandomChancePassed(0.25f) ? 5f : 1f;
+                    break;
+                case TintType.BLUE:
+                    dieValueProxy *= 2;
+                    break;
+                case TintType.RED:
+                    dieValueProxy -= 1;
+                    currentEndValueModValue += 2f;
+                    break;
+            }
+
+            return Mathf.RoundToInt(dieValueProxy);
+        } 
+
         public async UniTask T_CacheDice()
         {
             await UniTask.WaitForEndOfFrame();
             //Animate Dice go away
             //Cache dice 
+        }
+
+        private bool IsRandomChancePassed(float _chanceAmount)
+        {
+            return Random.Range(0f, 1f) <= _chanceAmount;
         }
         
         

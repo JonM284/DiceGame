@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using Data.Dice;
 using DG.Tweening;
 using Project.Scripts.Utils;
@@ -80,7 +82,11 @@ namespace Runtime.Dice
         public abstract void Initialize();
 
         [ContextMenu("Roll Die")]
-        public abstract void DoAction();
+        public virtual async UniTask DoActionAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            await UniTask.CompletedTask;
+        }
 
         public void EnablePhysics(bool _enable)
         {
@@ -89,7 +95,11 @@ namespace Runtime.Dice
             boxCol.isTrigger = !_enable;
         }
 
-        public abstract void MoveDie(Vector3 _newPosition, float _duration, bool _highlightEffects);
+        public virtual async UniTask MoveDieAsync(Vector3 _newPosition, float _duration, bool _highlightEffects,
+            CancellationToken token)
+        {
+            await UniTask.CompletedTask;
+        }
 
         public abstract void RotateDie(Vector3 _endRotation, float _duration);
 

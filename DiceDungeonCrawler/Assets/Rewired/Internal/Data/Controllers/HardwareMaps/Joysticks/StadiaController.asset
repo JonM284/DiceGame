@@ -285,12 +285,15 @@ MonoBehaviour:
   - type: 0
     elementIdentifier: 24
     componentElementIdentifiers: 0000000001000000
+    intValue0: 1
   - type: 0
     elementIdentifier: 25
     componentElementIdentifiers: 0200000003000000
+    intValue0: 1
   - type: 10
     elementIdentifier: 26
     componentElementIdentifiers: 14000000150000001600000017000000
+    intValue0: 0
   directInput:
     description: 
     matchingCriteria:

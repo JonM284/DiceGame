@@ -658,7 +658,7 @@ AudioSource:
   m_Enabled: 1
   serializedVersion: 4
   OutputAudioMixerGroup: {fileID: 1574447808837131905, guid: cfb106f85934a6b4f8676ecfd78acdde, type: 2}
-  m_audioClip: {fileID: 8300000, guid: c9707bc5ff11437409126861fa6115f4, type: 3}
+  m_audioClip: {fileID: 0}
   m_Resource: {fileID: 8300000, guid: c9707bc5ff11437409126861fa6115f4, type: 3}
   m_PlayOnAwake: 0
   m_Volume: 1
@@ -789,6 +789,31 @@ MonoBehaviour:
   m_audioSource: {fileID: 2956515827934183046}
   m_minPitch: 0.4
   m_maxPitch: 1.1
+  m_volumeCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: -1
+      outSlope: -1
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -1
+      outSlope: -1
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  meshRenderer: {fileID: 5529983660661348833}
 --- !u!1 &1490333904354897572
 GameObject:
   m_ObjectHideFlags: 0

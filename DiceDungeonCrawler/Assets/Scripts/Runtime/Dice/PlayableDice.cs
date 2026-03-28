@@ -1,7 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
+using Cysharp.Threading.Tasks;
+using Data.TintData;
 using DG.Tweening;
 using Project.Scripts.Utils;
+using Runtime.Dice.Enums;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -28,31 +32,29 @@ namespace Runtime.Dice
 
         [SerializeField] protected AnimationCurve m_volumeCurve;
 
+        [SerializeField] protected MeshRenderer meshRenderer;
+
         #endregion
 
         #region Private Fields
 
         protected float m_startTime, m_maxTime = 1f;
 
+        private CancellationTokenSource cts = new CancellationTokenSource();
+
         #endregion
         
         #region Accessors
 
         public int rollValue { get; protected set; }
-        
+
+        public TintDataBase TintData { get; protected set; }
+
+        public TintType TintType => !TintData.IsNull() ? TintData.tintType : TintType.NONE; 
+
         #endregion
         
         #region Unity Events
-
-        private void FixedUpdate()
-        {
-            if (!isRolling)
-            {
-                return;
-            }
-
-            CheckFinishedRolling();
-        }
 
         private void OnCollisionEnter(Collision other)
         {
@@ -66,29 +68,51 @@ namespace Runtime.Dice
         
         public override void Initialize()
         {
+            EnablePhysics(false);
             faces.ForEach(df => df.faceValueText.text = df.value == 6 || df.value == 9 ? $"<u>{df.value}</u>" 
                 : df.value.ToString());
         }
 
-        public override void DoAction()
+        private CancellationToken GetToken()
         {
+            if (!cts.IsNull())
+            {
+                cts.Cancel();
+            }
+            
+            cts = new CancellationTokenSource();
+            
+            return cts.Token;
+        }
+
+        public override async UniTask DoActionAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
             if (rb.IsNull())
             {
                 return;
             }
 
+            //Throw Die
             isRolling = true;
-
             m_startTime = Time.time;
             
             Vector3 _randomThrowForce = new Vector3(Random.Range(-0.5f, 0.5f),
                 Random.Range(m_minThrowForce, m_maxThrowForce)
                 , Random.Range(m_minThrowForce, m_maxThrowForce));
+            
             rb.AddForce(_randomThrowForce, ForceMode.Impulse);
 
             Vector3 _randomTorque = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f)) *
                                     Random.Range(m_minRollForce, m_maxRollForce);
             rb.AddTorque(_randomTorque, ForceMode.Impulse);
+            
+            //Wait to finish
+            await UniTask.WaitUntil(() => rb.IsSleeping(), cancellationToken: token);
+
+            //Show top face
+            isRolling = false;
+            await ShowResultFaceAsync(token);
         }
         
         public void GetUpFace()
@@ -120,20 +144,21 @@ namespace Runtime.Dice
             Debug.Log($"Rolled: {rollValue}");
         }
 
-        private void OnDieStopRolling()
+        private async UniTask ShowResultFaceAsync(CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
+
             GetUpFace();
-        }
+            
+            var desiredForwardDir = m_currentUpSide.associatedFace.forward;
 
-        private void CheckFinishedRolling()
-        {
-            if (!rb.IsSleeping())
-            {
-                return;
-            }
+            Debug.DrawRay(transform.position, desiredForwardDir, Color.cyan, 10f);
 
-            isRolling = false;
-            OnDieStopRolling();
+            Quaternion targetRotation = Quaternion.FromToRotation(desiredForwardDir, Vector3.up) * transform.rotation;
+
+            Debug.DrawRay(transform.position, targetRotation.eulerAngles, Color.green, 10f);
+            
+            await transform.DORotateQuaternion(targetRotation, 0.5f).WithCancellation(token);
         }
         
         private void HighlightUpsideFace(bool _enabled)
@@ -146,18 +171,18 @@ namespace Runtime.Dice
             m_currentUpSide.faceValueText.color = _enabled ? Color.green : Color.white;
         }
 
-        public override void MoveDie(Vector3 _newPosition, float _duration, bool _highlightEffects)
+        public override async UniTask MoveDieAsync(Vector3 _newPosition, float _duration, bool _highlightEffects, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
             SelectEffects(false);
             
             Debug.Log("Moving");
-            transform.DOMove(_newPosition, _duration).SetEase(Ease.Linear).OnComplete(() =>
+            await transform.DOMove(_newPosition, _duration).SetEase(Ease.Linear).ToUniTask(cancellationToken: token);
+            
+            if (_highlightEffects)
             {
-                if (_highlightEffects)
-                {
-                    SelectEffects(_highlightEffects);
-                }
-            });
+                SelectEffects(_highlightEffects);
+            }
         }
 
         public override void RotateDie(Vector3 _endRotation, float _duration)
@@ -170,6 +195,25 @@ namespace Runtime.Dice
             HighlightUpsideFace(_enabled);
 
             base.SelectEffects(_enabled);
+        }
+
+        public void ChangeTintType(TintDataBase newTint)
+        {
+            if (newTint.IsNull())
+            {
+                return;
+            }
+
+            TintData = newTint;
+
+            if (meshRenderer.IsNull())
+            {
+                Debug.LogError("[Dice Logic] MeshRenderer not assigned");
+                return;
+            }
+
+            var mat = meshRenderer.materials[0];
+            mat.color = newTint.tintColor;
         }
 
         public void PlayRandomSound()

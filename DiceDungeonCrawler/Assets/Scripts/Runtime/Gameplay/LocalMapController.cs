@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using Data;
 using Data.DataSaving;
@@ -43,7 +44,7 @@ namespace Runtime.Gameplay
 
         [SerializeField] private float pointOffsetX = 1f, pointOffsetY = 1f;
 
-        [SerializeField] private int maxAmountOfLevels;
+        [SerializeField] private int maxAmountOfLevels, amountOfLevelsToShow = 3;
         [SerializeField] private float m_levelSpacing = 1f;
 
         [SerializeField] private List<GameplayEventType> possibleRandomEventTypes = new List<GameplayEventType>();
@@ -55,14 +56,6 @@ namespace Runtime.Gameplay
         [SerializeField] private Transform playerMarker;
         [SerializeField] private float markerYOffset = 1f;
         
-        #endregion
-
-        #region Events
-
-        public UnityEvent onDisplayMap;
-
-        public UnityEvent onHideMap;
-
         #endregion
         
         #region Private Fields
@@ -99,21 +92,20 @@ namespace Runtime.Gameplay
 
         private int m_currentPointIDIterator;
         
-        [SerializeField]
-        private List<LevelItem> allCurrentRunLevels = new List<LevelItem>();
+        private SerializableDictionary<int,LevelItem> allCurrentRunLevels = new SerializableDictionary<int,LevelItem>();
         
         private List<GameplayEventType> m_possibleEventTypes = new List<GameplayEventType>();
         
         private float mapTotalDist;
+
+        private Dictionary<int,Vector3> fakeNextLevelPoints = new Dictionary<int,Vector3>();
         
         #endregion
 
         #region Accessors
         
         public Transform inactivePool => CommonUtils.GetRequiredComponent(ref m_inactivePool, () => TransformUtils.CreatePool(this.transform, false));
-
-        public bool mapIsShown { get; private set; }
-
+        
         #endregion
 
         #region Unity Events
@@ -138,8 +130,8 @@ namespace Runtime.Gameplay
             Debug.Log("Setting up player selection");
             
             //Force Player marker location
-            playerMarker.localPosition = 
-                m_currentPointData.worldPointLocation.FlattenVectorToY(m_currentPointData.worldPointLocation.y + markerYOffset);
+            playerMarker.localPosition =
+                m_currentPointObj.transform.localPosition.FlattenVectorToY(starterPoint.localPosition.y + markerYOffset);
             
             //Set connected points to selectable
             SetLevelSelectables();
@@ -148,6 +140,7 @@ namespace Runtime.Gameplay
         //When coming back to map, set points above current point to selectable, other points are considered passed
         public void SetLevelSelectables()
         {
+            //For each point in the next row
             foreach (var _pointData in allCurrentRunLevels[m_currentLevel + 1].levelPoints)
             {
                 m_activePointObjects.TryGetValue(_pointData.pointID, out MapLocationAction _mapLocationAction);
@@ -157,7 +150,9 @@ namespace Runtime.Gameplay
                     continue;
                 }
                 
-                _mapLocationAction.SetSelectable(m_currentPointData.nextLevelConnectedPoints.ContainsKey(_pointData.pointID));
+                //If this point ID is in the list of the current point the player is on -> it can be selected
+                //i.e.: If the points are connected
+                _mapLocationAction.SetSelectable(m_currentPointData.nextLevelConnectedPoints.Contains(_pointData.pointID));
             }
         }
 
@@ -198,29 +193,18 @@ namespace Runtime.Gameplay
             
             //2. Move player piece from current point to next point
             await playerMarker
-                .DOLocalMove(m_currentPointData.worldPointLocation
-                    .FlattenVectorToY(m_currentPointData.worldPointLocation.y + markerYOffset), 
+                .DOLocalMove(m_currentPointObj.transform.localPosition
+                        .FlattenVectorToY(m_currentPointObj.transform.localPosition.y + markerYOffset), 
                     0.15f)
                 .AsyncWaitForCompletion();
 
             //ToDo: Move Map? maybe not, maybe next time it shows, just move it before the player can see it on screen
 
         }
-        
-        public void DisplayMap()
-        {
-            mapIsShown = true;
-            onDisplayMap?.Invoke();
-        }
 
-        public void HideMap()
+        public async UniTask T_DrawMapAsync(CancellationToken token)
         {
-            mapIsShown = false;
-            onHideMap?.Invoke();
-        }
-
-        public async UniTask T_DrawMapAsync()
-        {
+            token.ThrowIfCancellationRequested();
             //Map is not created -> Create New Map
             if (allCurrentRunLevels.IsNull() || allCurrentRunLevels.Count == 0)
             {
@@ -232,6 +216,8 @@ namespace Runtime.Gameplay
             if (m_activePointObjects.Count > 0 
                 && !m_activePointObjects.FirstOrDefault().Value.IsNull())
             {
+                await T_GenerateVisualMapFromData();
+                GetCurrentPointObj();
                 await T_SetupMapForPlayerSelectionAsync();
                 return;
             }
@@ -293,22 +279,95 @@ namespace Runtime.Gameplay
         //Regenerate Visuals from Saved Data
         private async UniTask T_GenerateVisualMapFromData()
         {
-
-            foreach (var _level in allCurrentRunLevels)
+            //Generate locations when displaying the map
+            CacheAllPreviousItems();
+            
+            int _localLevelIndex = 0;
+            
+            for (int i = m_currentLevel; i < m_currentLevel + amountOfLevelsToShow; i++)
             {
-                foreach (var _pointData in _level.levelPoints)
+                int _currentPointIndex = 0;
+             
+                foreach (var _pointData in allCurrentRunLevels[i].levelPoints)
                 {
-
-                    InstantiatePointAt(_pointData.worldPointLocation, _pointData ,_pointData.eventGUID);
+                    InstantiatePointAt(GetPointPosition(_localLevelIndex, _currentPointIndex, 
+                            allCurrentRunLevels[i].levelPoints.Count) 
+                        , _pointData ,_pointData.eventGUID);
                     
-                    foreach (var _connectedPoint in _pointData.nextLevelConnectedPoints)
-                    {
-                        ConnectPoints(_connectedPoint.Value, _pointData.worldPointLocation);
-                    }
+                    _currentPointIndex++;
+                    await UniTask.WaitForEndOfFrame();
+                }
 
+                _localLevelIndex++;
+            }
+
+            if (m_currentLevel + amountOfLevelsToShow < allCurrentRunLevels.Count)
+            {
+                fakeNextLevelPoints.Clear();
+                
+                for(int i = 0; i < allCurrentRunLevels[m_currentLevel + amountOfLevelsToShow].levelPoints.Count; i++)
+                {
+                    var position = GetPointPosition(m_currentLevel + amountOfLevelsToShow
+                        , i, allCurrentRunLevels[m_currentLevel + amountOfLevelsToShow].levelPoints.Count);
+                    fakeNextLevelPoints.Add(allCurrentRunLevels[m_currentLevel + amountOfLevelsToShow].levelPoints[i].pointID, position);
+                }   
+            }
+            
+            for (int i = m_currentLevel; i < m_currentLevel + amountOfLevelsToShow; i++)
+            {
+                foreach (var _pointData in allCurrentRunLevels[i].levelPoints)
+                {
+                    var currentPointObj = GetPointAtIndex(_pointData.pointID);
+
+                    if (currentPointObj.IsNull())
+                    {
+                        continue;
+                    }
+                    
+                    foreach (var _nextlevelPointData in _pointData.nextLevelConnectedPoints)
+                    {
+                        var nextLevelPointObj = GetPointAtIndex(_nextlevelPointData);
+
+                        if (nextLevelPointObj.IsNull())
+                        {
+                            //Do one last try
+                            if (fakeNextLevelPoints.Count > 0)
+                            {
+                                fakeNextLevelPoints.TryGetValue(_nextlevelPointData, out Vector3 pos);
+
+                                if (pos.IsNull() || pos.IsNan())
+                                {
+                                    continue;
+                                }
+                                
+                                ConnectPoints(currentPointObj.transform.localPosition, pos);
+                            }
+                            continue;
+                        }
+                        
+                        ConnectPoints(currentPointObj.transform.localPosition, nextLevelPointObj.transform.localPosition);
+                    }
+                    
                     await UniTask.WaitForEndOfFrame();
                 }
             }
+        }
+
+        private Vector3 GetPointPosition(int _localLevelIndex, int _currentPointIndex ,int _levelPointAmount)
+        {
+            float _zPos = starterPoint.localPosition.z + (_localLevelIndex * m_levelSpacing);
+                
+            Vector3 _startPos = new Vector3(starterPoint.localPosition.x, starterPoint.localPosition.y, _zPos)
+                                - (transform.right * ((_levelPointAmount - 1) 
+                                                      * levelHorizontalSpacing) / 2f);
+            
+            float _Xposition = _levelPointAmount > 1 ? 
+                _startPos.x + (transform.right.x * _currentPointIndex * levelHorizontalSpacing)
+                            + Random.Range(-pointOffsetX, pointOffsetX) : 0;
+                    
+            _zPos += Random.Range(-pointOffsetY, pointOffsetY);
+                    
+            return new Vector3(_Xposition, starterPoint.localPosition.y, _zPos);
         }
 
         #endregion
@@ -327,11 +386,10 @@ namespace Runtime.Gameplay
                 pointID = m_currentPointIDIterator,
                 isCurrentPoint = true,
                 eventGUID = startPointEventType.eventGUID,
-                worldPointLocation = starterPoint.transform.localPosition
             };
 
             _newLevel.levelPoints.Add(_startingPoint);
-            allCurrentRunLevels.Add(_newLevel);
+            allCurrentRunLevels.Add(0,_newLevel);
         }
 
         //Final Boss
@@ -346,12 +404,10 @@ namespace Runtime.Gameplay
             {
                 pointID = 600,
                 eventGUID = finalBossEventType.eventGUID,
-                worldPointLocation = 
-                    new Vector3(0, starterPoint.localPosition.y,starterPoint.position.z + mapTotalDist + m_levelSpacing)
             };
 
             _newLevel.levelPoints.Add(_endPoint);
-            allCurrentRunLevels.Add(_newLevel);
+            allCurrentRunLevels.Add(maxAmountOfLevels,_newLevel);
         }
 
         //Run through created level, connect randomly to points above
@@ -376,10 +432,10 @@ namespace Runtime.Gameplay
                 {
                     //Previous row (multiple points): All connect to single point in next level
                     mpd.nextLevelConnectedPoints
-                        .Add(_currentLevel.levelPoints[0].pointID, _currentLevel.levelPoints[0].worldPointLocation); //UP
+                        .Add(_currentLevel.levelPoints[0].pointID); //UP
                     //Connect current point (single) to all points in previous row
                     _currentLevel.levelPoints[0].previousLevelConnectedPoints
-                        .Add(mpd.pointID, mpd.worldPointLocation); //DOWN
+                        .Add(mpd.pointID); //DOWN
                 });
                 
                 
@@ -399,10 +455,10 @@ namespace Runtime.Gameplay
                 {
                     //Previous Row (single point): connect to all points in the next level
                     _previousLevel.levelPoints[0].nextLevelConnectedPoints
-                        .Add(mpd.pointID, mpd.worldPointLocation);    //UP
+                        .Add(mpd.pointID);    //UP
                     //Connect all current level points to previous single point
                     mpd.previousLevelConnectedPoints
-                        .Add(_previousLevel.levelPoints[0].pointID, _previousLevel.levelPoints[0].worldPointLocation);    //DOWN
+                        .Add(_previousLevel.levelPoints[0].pointID);    //DOWN
                 }
                 Debug.Log($"<color=#00FF00>[LEVEL {_index} GENERATED: Previous LEVEL = Single Point]</color>");
 
@@ -425,19 +481,19 @@ namespace Runtime.Gameplay
                 {
                     //Connect [previous row, current point] directly below to [current row, current point]
                     _prevLevelCurrentPoint.nextLevelConnectedPoints
-                        .Add(_currentLevel.levelPoints[i].pointID, _currentLevel.levelPoints[i].worldPointLocation); //UP
+                        .Add(_currentLevel.levelPoints[i].pointID); //UP
                     
                     _currentLevel.levelPoints[i].previousLevelConnectedPoints
-                        .Add(_prevLevelCurrentPoint.pointID, _prevLevelCurrentPoint.worldPointLocation); //DOWN
+                        .Add(_prevLevelCurrentPoint.pointID); //DOWN
 
                     //Randomly connect if previous row has less points
                     if (maxPointsPreviousLevel < maxPointsCurrentLevel && Random.Range(0,2) == 0)
                     {
                         _prevLevelCurrentPoint.nextLevelConnectedPoints
-                            .Add(_currentLevel.levelPoints[1].pointID, _currentLevel.levelPoints[1].worldPointLocation); //UP
+                            .Add(_currentLevel.levelPoints[1].pointID); //UP
                         
                         _currentLevel.levelPoints[1].previousLevelConnectedPoints
-                            .Add(_prevLevelCurrentPoint.pointID, _prevLevelCurrentPoint.worldPointLocation); //DOWN
+                            .Add(_prevLevelCurrentPoint.pointID); //DOWN
                     }
                     
                     continue;
@@ -453,19 +509,19 @@ namespace Runtime.Gameplay
                     
                     //Connect [Previous Level Right Most Point] to [Far right Point Current Level]
                     _prevLevelCurrentPoint.nextLevelConnectedPoints
-                        .Add(_rightMostPointCurrentLevel.pointID, _rightMostPointCurrentLevel.worldPointLocation); //UP
+                        .Add(_rightMostPointCurrentLevel.pointID); //UP
                     
                     _rightMostPointCurrentLevel.previousLevelConnectedPoints
-                        .Add(_prevLevelCurrentPoint.pointID, _prevLevelCurrentPoint.worldPointLocation); //DOWN
+                        .Add(_prevLevelCurrentPoint.pointID); //DOWN
                     
                     //Randomly connect if previous row has less points
                     if (maxPointsPreviousLevel < maxPointsCurrentLevel && Random.Range(0,2) == 0)
                     {
                         _prevLevelCurrentPoint.nextLevelConnectedPoints
-                            .Add(_currentLevel.levelPoints[^2].pointID, _currentLevel.levelPoints[^2].worldPointLocation); //UP
+                            .Add(_currentLevel.levelPoints[^2].pointID); //UP
                         
                         _currentLevel.levelPoints[^2].previousLevelConnectedPoints
-                            .Add(_prevLevelCurrentPoint.pointID, _prevLevelCurrentPoint.worldPointLocation); //DOWN
+                            .Add(_prevLevelCurrentPoint.pointID); //DOWN
                     }
                     
                     continue;
@@ -481,9 +537,9 @@ namespace Runtime.Gameplay
                     var randomPoint = _availableConnects[Random.Range(0, _availableConnects.Count)];
                     _availableConnects.Remove(randomPoint);
                     _prevLevelCurrentPoint.nextLevelConnectedPoints
-                        .Add(randomPoint.pointID, randomPoint.worldPointLocation);   //UP
+                        .Add(randomPoint.pointID);   //UP
                     randomPoint.previousLevelConnectedPoints
-                        .Add(_prevLevelCurrentPoint.pointID, _prevLevelCurrentPoint.worldPointLocation);   //DOWN
+                        .Add(_prevLevelCurrentPoint.pointID);   //DOWN
                 }
             }
 
@@ -520,9 +576,9 @@ namespace Runtime.Gameplay
                     var _previousLevelPoint = _previousLevel.levelPoints.LastOrDefault();
                     //force connect to last point of previous row
                     _currentPoint.previousLevelConnectedPoints
-                        .Add(_previousLevelPoint.pointID, _previousLevelPoint.worldPointLocation);
+                        .Add(_previousLevelPoint.pointID);
                     _previousLevelPoint.nextLevelConnectedPoints
-                        .Add(_currentPoint.pointID, _currentPoint.worldPointLocation);
+                        .Add(_currentPoint.pointID);
                     continue;
                 }
 
@@ -531,9 +587,9 @@ namespace Runtime.Gameplay
                     var _previousLevelPoint = _previousLevel.levelPoints.FirstOrDefault();
                     //force connect to first point of previous row
                     _currentPoint.previousLevelConnectedPoints
-                        .Add(_previousLevelPoint.pointID, _previousLevelPoint.worldPointLocation);
+                        .Add(_previousLevelPoint.pointID);
                     _previousLevelPoint.nextLevelConnectedPoints
-                        .Add(_currentPoint.pointID, _currentPoint.worldPointLocation);
+                        .Add(_currentPoint.pointID);
                     continue;
                 }
 
@@ -554,9 +610,9 @@ namespace Runtime.Gameplay
                 var randomPoint = _availableConnects[randomOtherConnect];
                 _availableConnects.Remove(randomPoint);
                 randomPoint.nextLevelConnectedPoints
-                    .Add(_currentPoint.pointID, _currentPoint.worldPointLocation);   //UP
+                    .Add(_currentPoint.pointID);   //UP
                 _currentPoint.previousLevelConnectedPoints
-                    .Add(randomPoint.pointID, randomPoint.worldPointLocation);   //DOWN
+                    .Add(randomPoint.pointID);   //DOWN
             }
 
             #endregion
@@ -583,9 +639,9 @@ namespace Runtime.Gameplay
             
             //Otherwise connect
             _currentCheckPoint.previousLevelConnectedPoints
-                .Add(_noConnectionPreviousLevelPoint.pointID, _noConnectionPreviousLevelPoint.worldPointLocation);
+                .Add(_noConnectionPreviousLevelPoint.pointID);
             _noConnectionPreviousLevelPoint.nextLevelConnectedPoints
-                .Add(_currentCheckPoint.pointID, _currentCheckPoint.worldPointLocation);
+                .Add(_currentCheckPoint.pointID);
             
             return true;
         }
@@ -630,31 +686,19 @@ namespace Runtime.Gameplay
 
             //Every 6 Levels, MUST FORCE SPECIFIC TYPE OF BATTLE
             
-            float _Zposition = starterPoint.position.z + ((mapTotalDist * (float)_index / maxAmountOfLevels) +  m_levelSpacing);
-
-            
-            Vector3 _startPos = new Vector3(starterPoint.localPosition.x, starterPoint.localPosition.y, _Zposition)
-                                - (transform.right * ((_randomAmountOfEvents - 1) * levelHorizontalSpacing) / 2f); 
-            
             for (int i = 0; i < _randomAmountOfEvents; i++)
             {
                 m_currentPointIDIterator++;
-                
-                float _Xposition = _randomAmountOfEvents > 1 ? 
-                    _startPos.x + (transform.right.x * i * levelHorizontalSpacing) + Random.Range(-pointOffsetX, pointOffsetX) : 0;
-                
-                _Zposition += Random.Range(-pointOffsetY, pointOffsetY);
                 
                 //ToDo: Every 6 levels MUST have 1 miniboss, but it is not a single point
                 _currentLevel.levelPoints.Add(new MapPointData
                 {
                     eventGUID = _index % 6 == 0 ? GetMiniBossType().eventGUID : GetRandomEventType().eventGUID,
-                    worldPointLocation = new Vector3(_Xposition, starterPoint.localPosition.y, _Zposition),
                     pointID = m_currentPointIDIterator
                 });
             }
             
-            allCurrentRunLevels.Add(_currentLevel);
+            allCurrentRunLevels.Add(_index, _currentLevel);
         }
 
         #endregion
@@ -733,6 +777,7 @@ namespace Runtime.Gameplay
             pointLocation.Initialize(string.IsNullOrEmpty(_eventType) ? GetRandomEventType() 
                 : GetEventByGUID(_eventType),
                 _mapPointData);
+            
             m_activePointObjects.Add(_mapPointData.pointID, pointLocation);
         }
 
@@ -770,12 +815,6 @@ namespace Runtime.Gameplay
 
             m_activePointConnectors.Add(lineGo);
         }
-        
-        //Retrieve level data
-        public List<LevelItem> GetGeneratedLevel()
-        {
-            return allCurrentRunLevels.ToNewList();
-        }
 
         //Current Level Index
         public int GetCurrentLevel()
@@ -787,6 +826,12 @@ namespace Runtime.Gameplay
         public void IncreaseCurrentMapLevel()
         {
             m_currentLevel++;
+        }
+
+        private MapLocationAction GetPointAtIndex(int _pointIndex)
+        {
+            m_activePointObjects.TryGetValue(_pointIndex, out MapLocationAction _mapLocationAction);
+            return _mapLocationAction.IsNull() ? default : _mapLocationAction;
         }
 
         [ContextMenu("Reset Run")]
@@ -810,6 +855,7 @@ namespace Runtime.Gameplay
             allCurrentRunLevels = _savedGameData.savedRunLevels;
             m_currentPointData = _savedGameData.lastSelectedPoint; 
             m_currentLevel = _savedGameData.levelIndex;
+            m_currentPointIndex = _savedGameData.lastSelectedPoint.pointID;
         }
 
         public void SaveData(ref SavedGameData _savedGameData)

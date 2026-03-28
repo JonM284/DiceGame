@@ -205,9 +205,11 @@ MonoBehaviour:
   - type: 0
     elementIdentifier: 16
     componentElementIdentifiers: 0000000001000000
+    intValue0: 0
   - type: 10
     elementIdentifier: 17
     componentElementIdentifiers: 0c0000000d0000000e0000000f000000
+    intValue0: 0
   directInput:
     description: 
     matchingCriteria:

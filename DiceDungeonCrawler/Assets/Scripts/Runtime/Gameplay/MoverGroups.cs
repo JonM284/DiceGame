@@ -6,7 +6,8 @@ namespace Runtime.Gameplay
     [Serializable]
     public class MoverGroups
     {
-        public Vector3 onScreenPosition, offScreenPosition;
+        public bool isRotate;
+        public Transform onScreenTransform, offScreenTransform;
         public Transform target;
     }
 }

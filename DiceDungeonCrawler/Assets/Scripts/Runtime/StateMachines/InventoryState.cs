@@ -1,4 +1,5 @@
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Threading;
+using Cysharp.Threading.Tasks;
 using Runtime.Character.StateMachines;
 using UnityEngine;
 
@@ -14,11 +15,17 @@ namespace Runtime.StateMachines
         
         #endregion
 
+        #region Private Fields
+
+        private bool isRunning;
+
+        #endregion
+
         #region State Inherited Methods
 
-        public override async UniTask EnterState()
+        public override async UniTask EnterState(CancellationToken token)
         {
-            await base.EnterState();
+            await base.EnterState(token);
         }
 
         public override void AssignArgument(params object[] _arguments)
@@ -26,10 +33,36 @@ namespace Runtime.StateMachines
             
         }
 
-        public override async UniTask ExitState()
+        public override async UniTask ExitState(CancellationToken token)
         {
-            await base.ExitState();
+            await base.ExitState(token);
         } 
+        
+        public override void UpdateState()
+        {
+            //Do interaction checks here
+        }
+
+        #endregion
+
+        #region Class Implementation
+
+        public void OnSubstateInteraction()
+        {
+            if (stateManager.isTransitioning)
+            {
+                return;
+            }
+
+            isRunning = !isRunning;
+            
+            if (!isRunning)
+            {
+                isCompleted = true;
+            }
+            
+            stateManager.DoSubstateProcess(isRunning ,this.stateEnum);
+        }
 
         #endregion
         

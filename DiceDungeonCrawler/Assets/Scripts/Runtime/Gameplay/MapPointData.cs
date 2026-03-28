@@ -1,6 +1,5 @@
 ﻿using System;
-using UnityEngine;
-using UnityEngine.Rendering;
+using System.Collections.Generic;
 
 namespace Runtime.Gameplay
 {
@@ -11,10 +10,9 @@ namespace Runtime.Gameplay
     public class MapPointData
     {
         public int pointID;
-        public Vector3 worldPointLocation;
         public string eventGUID;
-        public bool isCurrentPoint, isPassed;
-        public SerializedDictionary<int, Vector3> nextLevelConnectedPoints = new SerializedDictionary<int, Vector3>();
-        public SerializedDictionary<int, Vector3> previousLevelConnectedPoints = new SerializedDictionary<int, Vector3>();
+        public bool isCurrentPoint, isPassed, isCompleted;
+        public List<int> nextLevelConnectedPoints = new List<int>();
+        public List<int> previousLevelConnectedPoints = new List<int>();
     }
 }

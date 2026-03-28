@@ -1,4 +1,5 @@
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Threading;
+using Cysharp.Threading.Tasks;
 using Runtime.Character.StateMachines;
 using UnityEngine;
 
@@ -10,9 +11,10 @@ namespace Runtime.StateMachines
 
         #region StateBase Inherited Methods
 
-        public override async UniTask EnterState()
+        public override async UniTask EnterState(CancellationToken token)
         {
-            await base.EnterState();
+            token.ThrowIfCancellationRequested();
+            await base.EnterState(token);
         }
 
         public override void AssignArgument(params object[] _arguments)
@@ -20,10 +22,16 @@ namespace Runtime.StateMachines
             
         }
 
-        public override async UniTask ExitState()
+        public override async UniTask ExitState(CancellationToken token)
         {
-            await base.ExitState();
+            token.ThrowIfCancellationRequested();
+            await base.ExitState(token);
         } 
+        
+        public override void UpdateState()
+        {
+            //Do interaction checks here
+        }
 
         #endregion
         

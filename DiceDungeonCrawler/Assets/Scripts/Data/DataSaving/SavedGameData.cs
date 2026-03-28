@@ -13,7 +13,7 @@ namespace Data.DataSaving
         public int levelIndex;
         public MapPointData lastSelectedPoint;
         public List<SavedDiceData> m_savedDiceRoster, m_savedInventory, m_savedPerkDice;
-        public List<LevelItem> savedRunLevels;
+        public SerializableDictionary<int,LevelItem> savedRunLevels;
         
         public SavedGameData()
         {
@@ -21,7 +21,7 @@ namespace Data.DataSaving
             m_savedDiceRoster = new List<SavedDiceData>();
             m_savedInventory = new List<SavedDiceData>();
             m_savedPerkDice = new List<SavedDiceData>();
-            savedRunLevels = new List<LevelItem>();
+            savedRunLevels = new SerializableDictionary<int,LevelItem>();
         }
     }
 }

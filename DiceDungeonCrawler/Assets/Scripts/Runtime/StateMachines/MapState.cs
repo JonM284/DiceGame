@@ -1,4 +1,5 @@
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Threading;
+using Cysharp.Threading.Tasks;
 using DG.Tweening;
 using Project.Scripts.Utils;
 using Runtime.Character.StateMachines;
@@ -17,16 +18,18 @@ namespace Runtime.StateMachines
         [SerializeField] private Vector3 m_defaultCamRot, m_mapCamRot;
 
         [SerializeField] private float m_rotationDuration = 0.15f;
+        
         #endregion
         
-        public override async UniTask EnterState()
+        public override async UniTask EnterState(CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
             //Draw Map outside of player's view
-            await LocalMapController.Instance.T_DrawMapAsync();
+            await LocalMapController.Instance.T_DrawMapAsync(token);
             //Move map to player
-            await base.EnterState();
+            await base.EnterState(token);
             //Change camera Angle (might not be necessary)
-            LocalCameraController.Instance.RotateCameraTo(m_mapCamRot, m_rotationDuration);
+            await LocalCameraController.Instance.RotateCameraTo(m_mapCamRot, m_rotationDuration, token);
         }
 
         public override void AssignArgument(params object[] _arguments)
@@ -34,12 +37,18 @@ namespace Runtime.StateMachines
             
         }
 
-        public override async UniTask ExitState()
+        public override async UniTask ExitState(CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
             //Reset Camera
-            LocalCameraController.Instance.RotateCameraTo(m_defaultCamRot, m_rotationDuration);
+            LocalCameraController.Instance.RotateCameraTo(m_defaultCamRot, m_rotationDuration, token);
             //Move map off screen
-            await base.ExitState();
+            await base.ExitState(token);
+        }
+        
+        public override void UpdateState()
+        {
+            //Do interaction checks here
         }
         
         

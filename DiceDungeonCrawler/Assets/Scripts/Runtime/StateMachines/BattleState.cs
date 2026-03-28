@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Threading;
 using Cysharp.Threading.Tasks;
+using Project.Scripts.Utils;
 using Runtime.Character.StateMachines;
 using Runtime.GameControllers;
 using Runtime.Gameplay;
@@ -28,6 +30,10 @@ namespace Runtime.StateMachines
 
         private EMapLocationType m_battleType;
 
+        private CancellationTokenSource cts;
+
+        private float cameraMoveDuration = 0.35f;
+
         #endregion
         
         #region Accessors
@@ -52,10 +58,12 @@ namespace Runtime.StateMachines
         
         #region Inherited Methods
 
-        public override async UniTask EnterState()
+        public override async UniTask EnterState(CancellationToken token)
         {
-            await base.EnterState();
-            LocalDiceController.Instance.InitializeDice();
+            token.ThrowIfCancellationRequested();
+            await base.EnterState(token);
+            await LocalCameraController.Instance.MoveCameraToAsync(m_resultViewLocation.position, cameraMoveDuration, token);
+            stateManager.ChangeInteractionGuard(true);
         }
 
         public override void AssignArgument(params object[] _arguments)
@@ -66,75 +74,108 @@ namespace Runtime.StateMachines
                 EnemyController.Instance.GetBattleScoreByLevel(LocalMapController.Instance.GetCurrentLevel()) * _modifer;
             Debug.Log("Assign Arguement");
             Debug.Log(m_currentAmountToBeat);
-            SetupCounter();
+            DisplayCounter(true);
+
+            if (!cts.IsNull())
+            {
+                cts.Cancel();
+            }
+            
+            cts = new CancellationTokenSource();
+            EndIntroSequence(cts.Token).Forget();
         }
 
-        public override async UniTask ExitState()
+        public override async UniTask ExitState(CancellationToken token)
         {
-            await base.ExitState();
+            token.ThrowIfCancellationRequested();
+            DisplayCounter(false);
+            await base.ExitState(token);
         }
-        
+
+
+        public override void UpdateState(){}
 
         #endregion
 
 
         #region Class Implementation
 
+        private async UniTask EndIntroSequence(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            await UniTask.WaitForSeconds(0.57f);
+            await LocalCameraController.Instance.MoveCameraToAsync(m_cameraDefaultLocation.position, cameraMoveDuration, token);
+            await LocalDiceController.Instance.InitializeDice(token);
+            stateManager.ChangeInteractionGuard(false);
+        }
+
         //Move to battle state manager
-        public void SetupCounter()
+        private void DisplayCounter(bool isDisplay)
         {
             m_counterText.text = m_currentAmountToBeat.ToString(); 
             m_counterText.color = Color.black;
-            m_counterBackground.color = Color.white;
-            m_glow.color = Color.white;
+            m_counterBackground.color = isDisplay ? Color.white : Color.black;
+            m_glow.color = isDisplay ? Color.white : Color.black;
         }
         
         
-        public async UniTask T_ShowResults(float _calculatedAmount)
+        public async UniTask T_ShowResults(float _calculatedAmount, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
 
-            LocalCameraController.Instance.MoveCameraTo(m_resultViewLocation.position, 0.2f);
+            stateManager.ChangeInteractionGuard(true);
 
-            await UniTask.WaitForSeconds(0.2f);
+            await LocalCameraController.Instance.MoveCameraToAsync(m_resultViewLocation.position, cameraMoveDuration, token);
 
-            await T_CountToNumber(m_currentAmountToBeat - _calculatedAmount);
+            await UniTask.WaitForSeconds(0.1f);
 
-            LocalCameraController.Instance.MoveCameraTo(m_cameraDefaultLocation.position, 0.2f);
+            await T_CountToNumber(m_currentAmountToBeat - _calculatedAmount, token);
 
-            await UniTask.WaitForSeconds(0.2f);
+            await LocalCameraController.Instance.MoveCameraToAsync(m_cameraDefaultLocation.position,cameraMoveDuration, token);
+
+            await UniTask.WaitForSeconds(0.1f);
+            
+            stateManager.ChangeInteractionGuard(false);
 
             if (m_currentAmountToBeat <= 0)
             {
-                //Player beat Enemy
+                //Player wins battle
                 //1. Remove battle area
                 //2. Rewards
                 //3. Return to Map
-                LocalDiceController.Instance.DisplayDice(false);
+                await LocalDiceController.Instance.ResetDiceAfterBattle(token);
                 stateManager.ChangeState(m_battleType == EMapLocationType.E_BATTLE ? ERunState.MAP : ERunState.REWARD);
                 return;
             }
 
             if (LocalDiceController.Instance.amountOfTries > 0)
             {
-                LocalDiceController.Instance.OnResetDiceAfterPlay();
+                //Player didn't win battle, has tries left
+                await LocalDiceController.Instance.OnResetDiceAfterPlay(token);
                 return;
             }
             
             //LOSE CONDITION REACHED
             //1. Go to map
             //2. Subtract lives or restart run.
-            LocalDiceController.Instance.DisplayDice(false);
+            await LocalDiceController.Instance.ResetDiceAfterBattle(token);
             stateManager.ChangeState(ERunState.LOSE);
         }
 
         private void LocalDiceControllerOnOutcomeCalculated(float _calculatedOutcome)
         {
-            T_ShowResults(_calculatedOutcome);
+            if (!cts.IsNull())
+            {
+                cts.Cancel();
+            }
+
+            cts = new CancellationTokenSource();
+            T_ShowResults(_calculatedOutcome, cts.Token).Forget();
         }
         
-        private async UniTask T_CountToNumber(float _newValue)
+        private async UniTask T_CountToNumber(float _newValue, CancellationToken token)
         {
-            
+            token.ThrowIfCancellationRequested();
             float _previousValue = m_currentAmountToBeat;
             int _stepAmount;
             float _waitTime = 1 / m_countFPS;

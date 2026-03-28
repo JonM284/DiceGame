@@ -5,6 +5,5 @@
         NONE,
         CONTAINS,
         IS_SET,
-        
     }
 }
