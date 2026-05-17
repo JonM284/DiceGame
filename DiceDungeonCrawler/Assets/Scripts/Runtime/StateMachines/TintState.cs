@@ -144,7 +144,7 @@ namespace Runtime.StateMachines
             //ToDo: Need to add weight when choosing tints
             foreach (var bottle in tintBottles)
             {
-                var randomTint = availableTintTypes[Random.Range(0, availableTintTypes.Count - 1)];
+                var randomTint = availableTintTypes[Random.Range(0, availableTintTypes.Count)];
                 bottle.Initialize(randomTint, OnTintSelected);
                 availableTintTypes.Remove(randomTint);
             }

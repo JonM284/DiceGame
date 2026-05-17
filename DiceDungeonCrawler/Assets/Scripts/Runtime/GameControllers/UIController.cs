@@ -6,6 +6,7 @@ using Data;
 using Project.Scripts.Utils;
 using Runtime.UI;
 using Runtime.UI.Items;
+using TMPro;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.Events;
@@ -55,6 +56,10 @@ namespace Runtime.GameControllers
         [SerializeField] private List<CanvasByLayer> canvasByLayers = new List<CanvasByLayer>();
         
         [SerializeField] private PopupTextItem textAssetRef;
+
+        [Header("Helper Info")]
+        [SerializeField] private GameObject infoObject;
+        [SerializeField] private TMP_Text infoText;
         
         #endregion
 
@@ -111,6 +116,12 @@ namespace Runtime.GameControllers
         #endregion
 
         #region Class Implementation
+
+        public void ShowInfoText(bool isDisplay, string text)
+        {
+            infoText.text = text;
+            infoObject.SetActive(isDisplay);
+        }
 
         public void FadeBlackScreen(bool _fadeIn)
         {

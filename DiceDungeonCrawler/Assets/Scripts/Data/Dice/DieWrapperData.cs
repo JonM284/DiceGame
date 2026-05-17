@@ -8,7 +8,7 @@ namespace Data.Dice
     [Serializable]
     public class DieWrapperData
     {
-        public List<int> faceValues = new List<int>();
+        public List<int> faceValues = new();
         public TintType tintType;
         
         public DieWrapperData(List<int> faceValues, TintType tintType)

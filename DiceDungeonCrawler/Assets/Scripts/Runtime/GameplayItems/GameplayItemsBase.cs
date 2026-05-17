@@ -9,8 +9,7 @@ namespace Runtime.GameplayItems
 {
     public abstract class GameplayItemsBase: MonoBehaviour, ISelectable
     {
-
-
+        
         #region Actions
 
         public static event Action<GameplayItemsBase> onItemSelected;

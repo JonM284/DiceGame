@@ -5,6 +5,7 @@ using Data.Dice;
 using NUnit.Framework;
 using Project.Scripts.Utils;
 using Runtime.Dice;
+using Runtime.Dice.Enums;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -32,9 +33,9 @@ namespace Runtime.GameControllers
 
         #region Private Fields
 
-        private List<SavedDiceData> m_rosterDiceData = new List<SavedDiceData>();
-        private List<SavedDiceData> m_inventoryDiceData = new List<SavedDiceData>();
-        private List<SavedDiceData> m_perkDiceData = new List<SavedDiceData>();
+        private List<DieWrapperData> savedRosterDice = new List<DieWrapperData>();
+        private List<DieWrapperData> savedInventoryDice = new List<DieWrapperData>();
+        private List<ModDieWrapperData> savedModifierDice = new List<ModDieWrapperData>();
 
         #endregion
         
@@ -61,41 +62,46 @@ namespace Runtime.GameControllers
             return _inputNumber is < 0 or > 100 ? m_allPossibleDieFaceNumbers[0] : m_allPossibleDieFaceNumbers[_inputNumber - 1];
         }
 
-        public List<SavedDiceData> GetRosterDiceData()
+        public List<DieWrapperData> GetRosterDiceData()
         {
-            if (m_rosterDiceData.IsNull() || m_rosterDiceData.Count == 0)
+            if (savedRosterDice.IsNull() || savedRosterDice.Count == 0)
             {
                 var _newSet = GetDiceSet(0);
                 return _newSet;
             }
             
-            return m_rosterDiceData.ToNewList();
+            return savedRosterDice.ToNewList();
         }
 
-        private List<SavedDiceData> GetDiceSet(int _index)
+        private List<DieWrapperData> GetDiceSet(int _index)
         {
             if (m_allStartingSets.Count < _index || m_allStartingSets[_index].IsNull())
             {
                 return default;
             }
 
-            return m_allStartingSets[_index].m_startingDice.Select(_dieData => new SavedDiceData(_dieData.dieGuid)).ToList();
+            return m_allStartingSets[_index].m_startingDice.Select(_dieData => new DieWrapperData(_dieData.valuesPerSide.ToList(), TintType.NONE)).ToList();
         }
 
         private void SearchForDiceDetails()
         {
-            List<SavedDiceData> references = new List<SavedDiceData>();
-            foreach (var _die in m_rosterDiceData)
+            List<DieWrapperData> references = new List<DieWrapperData>();
+            foreach (var _die in savedRosterDice)
             {
-                references.Add(new SavedDiceData(_die.guid));
+                references.Add(new DieWrapperData(_die.faceValues, _die.tintType));
             }
 
-            m_rosterDiceData = CommonUtils.ToNewList(references);
+            savedRosterDice = CommonUtils.ToNewList(references);
         }
 
         public DieData GetDieByGUID(string _searchGUID)
         {
-            return m_allDiceDatas.FirstOrDefault(csb => csb.dieGuid == _searchGUID);
+            return m_allDiceDatas.FirstOrDefault(csb => csb.itemGuid == _searchGUID);
+        }
+
+        public DieData GetDieByAmountOfSides(int _amountOfSides)
+        {
+            return m_allDiceDatas.FirstOrDefault(dd => dd.valuesPerSide.Count == _amountOfSides);
         }
 
         #endregion
@@ -105,17 +111,17 @@ namespace Runtime.GameControllers
 
         public void LoadData(SavedGameData _savedGameData)
         {
-            m_rosterDiceData = _savedGameData.m_savedDiceRoster;
-            m_inventoryDiceData = _savedGameData.m_savedInventory;
-            m_perkDiceData = _savedGameData.m_savedPerkDice;
+            savedRosterDice = _savedGameData.m_savedDiceRoster;
+            savedInventoryDice = _savedGameData.m_savedInventory;
+            savedModifierDice = _savedGameData.m_savedModDice;
             SearchForDiceDetails();
         }
 
         public void SaveData(ref SavedGameData _savedGameData)
         {
-            _savedGameData.m_savedDiceRoster = m_rosterDiceData;
-            _savedGameData.m_savedInventory = m_inventoryDiceData;
-            _savedGameData.m_savedPerkDice = m_perkDiceData;
+            _savedGameData.m_savedDiceRoster = savedRosterDice;
+            _savedGameData.m_savedInventory = savedInventoryDice;
+            _savedGameData.m_savedModDice = savedModifierDice;
         }
 
         #endregion

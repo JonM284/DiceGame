@@ -1,7 +1,6 @@
 ﻿using System.Collections.Generic;
 using Data.Dice;
 using Runtime.Gameplay;
-using UnityEngine;
 
 namespace Data.DataSaving
 {
@@ -12,15 +11,16 @@ namespace Data.DataSaving
         
         public int levelIndex;
         public MapPointData lastSelectedPoint;
-        public List<SavedDiceData> m_savedDiceRoster, m_savedInventory, m_savedPerkDice;
+        public List<DieWrapperData> m_savedDiceRoster, m_savedInventory;
+        public List<ModDieWrapperData> m_savedModDice;
         public SerializableDictionary<int,LevelItem> savedRunLevels;
         
         public SavedGameData()
         {
             this.levelIndex = 0;
-            m_savedDiceRoster = new List<SavedDiceData>();
-            m_savedInventory = new List<SavedDiceData>();
-            m_savedPerkDice = new List<SavedDiceData>();
+            m_savedDiceRoster = new List<DieWrapperData>();
+            m_savedInventory = new List<DieWrapperData>();
+            m_savedModDice = new List<ModDieWrapperData>();
             savedRunLevels = new SerializableDictionary<int,LevelItem>();
         }
     }

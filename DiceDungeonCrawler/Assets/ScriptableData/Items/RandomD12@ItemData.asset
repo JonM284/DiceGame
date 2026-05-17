@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 05140c1390ac473c81b87ac0557f9702, type: 3}
+  m_Name: RandomD12@ItemData
+  m_EditorClassIdentifier: 
+  shopItemType: 2
+  instantChangeItemType: 0
+  itemDropProbabilityWeight: 0
+  itemPrice: 0
+  itemGuid: ba8cfa91-3e72-44bf-8fef-ffa89dd28c37
+  usableItemPrefab: {fileID: 5528508153212404791, guid: b368cc3868070c4458b12fefa21e4fb5, type: 3}
+  itemVisualPrefab: {fileID: 3299223177888991122, guid: 3695ffeb92ff67843b85e7c6d08cacb6, type: 3}
+  amountOfSides: 12

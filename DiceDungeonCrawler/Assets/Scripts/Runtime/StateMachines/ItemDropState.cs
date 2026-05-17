@@ -95,7 +95,7 @@ namespace Runtime.StateMachines
 
         private GameplayItemsBase GetItem(int _index)
         {
-            var go = Instantiate(itemDatas[_index].itemPrefab);
+            var go = Instantiate(itemDatas[_index].GetItemVisual());
             go.transform.ResetPRS(creationPoint);
 
             go.TryGetComponent(out GameplayItemsBase _gameplayItemsBase);

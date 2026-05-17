@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using Data.DataSaving;
+using Data.Dice;
 using DG.Tweening;
+using NUnit.Framework;
 using Project.Scripts.Utils;
 using Rewired;
 using Runtime.Dice;
@@ -84,6 +87,9 @@ namespace Runtime.Gameplay
         private Player m_player;
 
         private List<ModifierDice> m_modifiers = new List<ModifierDice>();
+
+        private List<DieWrapperData> savedRosterDice, savedInventoryDice;
+        private List<ModDieWrapperData> savedModifierDice;
         
         private float m_mouseDownTime;
         private Plane m_dragPlane = new Plane(Vector3.up, Vector3.zero);
@@ -145,14 +151,20 @@ namespace Runtime.Gameplay
         {
             var _initialRosterDice = DiceGameController.Instance.GetRosterDiceData();
 
-            for(int i = 0; i < _initialRosterDice.Count; i++)
+            foreach (var savedDie in _initialRosterDice)
             {
-                var _dieData = DiceGameController.Instance.GetDieByGUID(_initialRosterDice[i].guid);
-                var _newBaseDie = Instantiate(_dieData.diePrefab, m_diceBagLoc.position, Quaternion.identity);
-                _newBaseDie.Initialize();
-                m_rosterDice.Add(_newBaseDie);
-            }
+                var _dieData = DiceGameController.Instance.GetDieByAmountOfSides(savedDie.faceValues.Count);
+                var _newBaseDie = Instantiate(_dieData.GetUsableItem(), m_diceBagLoc.position, Quaternion.identity);
 
+                if (!_newBaseDie.TryGetComponent(out PlayableDice playableDice))
+                {
+                    Debug.LogError("[Die Creation Error] Created Die does NOT have playable Dice Behaviour attached");
+                    return;
+                }
+                
+                playableDice.Initialize();
+                m_rosterDice.Add(playableDice);
+            }
         }
         
         
@@ -679,7 +691,7 @@ namespace Runtime.Gameplay
             switch (tintType)
             {
                 case TintType.YELLOW:
-                    dieValueProxy *= IsRandomChancePassed(0.25f) ? 5f : 1f;
+                    dieValueProxy *= IsRandomChancePassed(0.25f) ? 6f : 1f;
                     break;
                 case TintType.BLUE:
                     dieValueProxy *= 2;
@@ -702,11 +714,11 @@ namespace Runtime.Gameplay
 
         private bool IsRandomChancePassed(float _chanceAmount)
         {
-            return Random.Range(0f, 1f) <= _chanceAmount;
+            return Random.Range(0.0f, 1.0f) <= _chanceAmount;
         }
         
         
         #endregion
-
+        
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using Project.Scripts.Utils;
 using UnityEngine;
@@ -97,12 +98,15 @@ namespace Runtime.GameControllers
             GetPool(_poolName).ReturnItem(_returnedObject);
         }
 
-        public async UniTask<GameObject> T_CreateObject(string _poolName, AssetReference _reference, Vector3 _position)
+        public async UniTask<GameObject> CreateObjectAsync(string _poolName, AssetReference _reference, 
+            Vector3 _position, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
+            
             GameObject _returnedObject = null;
             if (m_objectPools.Count == 0)
             {
-                var _newPool = await T_CreateNewPool(_poolName, _reference);
+                var _newPool = await CreateNewPoolAsync(_poolName, _reference, token);
                 _returnedObject = _newPool.GetItem();
                 _returnedObject.transform.position = _position;
                 _returnedObject.transform.parent = null;
@@ -118,7 +122,7 @@ namespace Runtime.GameControllers
             }
 
             {
-                var _newPool = await T_CreateNewPool(_poolName, _reference);
+                var _newPool = await CreateNewPoolAsync(_poolName, _reference, token);
                 _returnedObject = _newPool.GetItem();
                 _returnedObject.transform.position = _position;
                 _returnedObject.transform.parent = null;
@@ -126,22 +130,25 @@ namespace Runtime.GameControllers
             }
         }
 
-        public async UniTask T_PreCreateObject(string _poolName, GameObject _reference)
+        public async UniTask PreCreateObjectAsync(string _poolName, GameObject _reference, CancellationToken token)
         {
             if (m_objectPools.Count == 0 || !ContainsAddressablePool(_poolName))
             {
-                await T_CreateNewPool(_poolName, _reference);
+                await CreateNewPoolAsync(_poolName, _reference, token);
             }
 
             GetPool(_poolName).ForceCreateNewItem(m_cachedObjectPoolParent);
         }
         
-        public async UniTask<GameObject> T_CreateObject(string _poolName, GameObject _reference, Vector3 _position)
+        public async UniTask<GameObject> CreateObjectAsync(string _poolName, GameObject _reference, 
+            Vector3 _position, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
+            
             GameObject _returnedObject = null;
             if (m_objectPools.Count == 0 || !ContainsAddressablePool(_poolName))
             {
-                var _newPool = await T_CreateNewPool(_poolName, _reference);
+                var _newPool = await CreateNewPoolAsync(_poolName, _reference, token);
                 _returnedObject = _newPool.GetItem();
                 _returnedObject.transform.position = _position;
                 _returnedObject.transform.parent = null;
@@ -154,27 +161,31 @@ namespace Runtime.GameControllers
             return _returnedObject;
         }
 
-        public async UniTask<GameObject> T_CreateParentedObject(string _poolName, GameObject _reference,
-            Transform _parent)
+        public async UniTask<GameObject> CreateParentedObjectAsync(string _poolName, GameObject _reference,
+            Transform _parent, CancellationToken token)
         {
             GameObject _returnedObject = null;
             if (m_objectPools.Count == 0 || !ContainsAddressablePool(_poolName))
             {
-                var _newPool = await T_CreateNewPool(_poolName, _reference);
+                var _newPool = await CreateNewPoolAsync(_poolName, _reference, token);
                 _returnedObject = _newPool.GetItem();
                 _returnedObject.transform.parent = _parent;
+                _returnedObject.transform.localPosition = Vector3.zero;
                 return _returnedObject;
             }
 
             _returnedObject = GetPool(_poolName).GetItem();
             _returnedObject.transform.parent = _parent;
+            _returnedObject.transform.localPosition = Vector3.zero;
             return _returnedObject;
         }
 
         
-        private async UniTask<ObjectPool> T_CreateNewPool(string _poolName, AssetReference _reference)
+        private async UniTask<ObjectPool> CreateNewPoolAsync(string _poolName, AssetReference _reference, CancellationToken token)
         {
-            var _clonedObject = await AddressableController.Instance.T_LoadGameObject(_reference, null, cachedObjectPoolParent);
+            token.ThrowIfCancellationRequested();
+            
+            var _clonedObject = await AddressableController.Instance.T_LoadGameObject(_reference, null, cachedObjectPoolParent, token);
 
             var _firstObject = Instantiate(_clonedObject, cachedObjectPoolParent);
 
@@ -185,8 +196,9 @@ namespace Runtime.GameControllers
             return _newPool;
         }
         
-        private async UniTask<ObjectPool> T_CreateNewPool(string _poolName, GameObject _reference)
+        private async UniTask<ObjectPool> CreateNewPoolAsync(string _poolName, GameObject _reference, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
             var _clonedObject = Instantiate(_reference, cachedObjectPoolParent);
             
             var _firstObject = Instantiate(_reference, cachedObjectPoolParent);

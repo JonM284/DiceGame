@@ -28,7 +28,7 @@ namespace Runtime.Dice
         
         [SerializeField] protected AudioSource m_audioSource;
 
-        [SerializeField] protected float m_minPitch = 0.9f, m_maxPitch = 1.1f;
+        [SerializeField] protected float m_minPitch = 0.4f, m_maxPitch = 1.1f;
 
         [SerializeField] protected AnimationCurve m_volumeCurve;
 
@@ -69,8 +69,8 @@ namespace Runtime.Dice
         public override void Initialize()
         {
             EnablePhysics(false);
-            faces.ForEach(df => df.faceValueText.text = df.value == 6 || df.value == 9 ? $"<u>{df.value}</u>" 
-                : df.value.ToString());
+            faces.ForEach(df => df.faceValueText.ForEach(text => text.text = df.value is 6 or 9 ? $"<u>{df.value}</u>" 
+                : df.value.ToString()));
         }
 
         private CancellationToken GetToken()
@@ -150,15 +150,16 @@ namespace Runtime.Dice
 
             GetUpFace();
             
-            var desiredForwardDir = m_currentUpSide.associatedFace.forward;
-
-            Debug.DrawRay(transform.position, desiredForwardDir, Color.cyan, 10f);
-
-            Quaternion targetRotation = Quaternion.FromToRotation(desiredForwardDir, Vector3.up) * transform.rotation;
-
-            Debug.DrawRay(transform.position, targetRotation.eulerAngles, Color.green, 10f);
+            var targetUpRotation = Quaternion.FromToRotation(m_currentUpSide.associatedFace.forward, Vector3.up) * transform.rotation;
+            var targetForwardRotation =
+                Quaternion.FromToRotation(m_currentUpSide.associatedFace.up, Vector3.forward) * transform.rotation;
             
-            await transform.DORotateQuaternion(targetRotation, 0.5f).WithCancellation(token);
+            var tasks = new List<UniTask>();
+            
+            tasks.Add(transform.DORotateQuaternion(targetUpRotation, 0.5f).WithCancellation(token));
+            tasks.Add(transform.DORotateQuaternion(targetForwardRotation, 0.5f).WithCancellation(token));
+
+            await tasks;
         }
         
         private void HighlightUpsideFace(bool _enabled)
@@ -168,7 +169,7 @@ namespace Runtime.Dice
                 return;
             }
             
-            m_currentUpSide.faceValueText.color = _enabled ? Color.green : Color.white;
+            m_currentUpSide.faceValueText.ForEach(text => text.color = _enabled ? Color.green : Color.white);
         }
 
         public override async UniTask MoveDieAsync(Vector3 _newPosition, float _duration, bool _highlightEffects, CancellationToken token)
@@ -214,6 +215,8 @@ namespace Runtime.Dice
 
             var mat = meshRenderer.materials[0];
             mat.color = newTint.tintColor;
+            
+            faces.ForEach(df => df.faceValueText.ForEach(text => text.color = newTint.tintColor));
         }
 
         public void PlayRandomSound()
@@ -233,8 +236,10 @@ namespace Runtime.Dice
             m_audioSource.Play();
         }
 
+        public List<DieFace> GetFaces() => faces;
+
         #endregion
-        
-        
+
+
     }
 }

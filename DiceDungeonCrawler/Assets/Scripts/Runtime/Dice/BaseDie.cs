@@ -2,17 +2,13 @@
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using Data.Dice;
 using DG.Tweening;
 using Project.Scripts.Utils;
-using Runtime.GameControllers;
 using Runtime.Selection;
 using UnityEngine;
-using Random = UnityEngine.Random;
 
 namespace Runtime.Dice
 {
-    [RequireComponent(typeof(BoxCollider))]
     [RequireComponent(typeof(Rigidbody))]
     public abstract class BaseDie: DraggableBase, ISelectable
     {
@@ -37,7 +33,7 @@ namespace Runtime.Dice
         [SerializeField] protected float m_scaleOffset = 0.25f;
 
         [SerializeField] protected float m_positionShakeStrength = 0.003f, m_positionShakeDuration = 0.4f;
-        [SerializeField] protected float m_rotationShakeStrength = 20f, m_rotationShakeDuration = 0.5f;
+        [SerializeField] protected float m_rotationShakeStrength = 20f, m_rotationShakeDuration = 2f;
 
         #endregion
 
@@ -45,7 +41,7 @@ namespace Runtime.Dice
 
         protected Rigidbody m_rigidbodyRef;
         
-        protected BoxCollider m_boxColliderRef;
+        protected Collider m_colliderRef;
 
         protected Tweener m_selectPositionTweener, m_selectRotationTweener;
 
@@ -57,7 +53,7 @@ namespace Runtime.Dice
 
         public Rigidbody rb => CommonUtils.GetRequiredComponent(ref m_rigidbodyRef, GetComponent<Rigidbody>);
         
-        public BoxCollider boxCol => CommonUtils.GetRequiredComponent(ref m_boxColliderRef, GetComponent<BoxCollider>);
+        public Collider boxCol => CommonUtils.GetRequiredComponent(ref m_colliderRef, GetComponent<Collider>);
         
         public bool isRolling { get; protected set; }
         
